@@ -7,14 +7,28 @@ description: Maintains a compact Markdown product roadmap and safely coordinates
 
 Northstar governs the roadmap; Wayfinder executes authorized work. `ROADMAP.md` is canonical.
 
+The user expresses intent in natural language. The agent runs the bundled engine internally; never ask the user to translate their request into Python or CLI flags. Show human-readable previews and results, not raw commands, unless the user asks for troubleshooting details.
+
+## Intent routing
+
+| User intent | Internal operation |
+|---|---|
+| Set up or connect services | `/setup-northstar`, then `doctor` / `init` |
+| Create or import a story | `add` |
+| Refine, reprioritize, defer, or retire | `update` |
+| Pick up, start, or claim work | `claim` |
+| Transfer ownership | `handoff` |
+| Check or repair GitHub/GitLab drift | `reconcile` |
+| Finish or deliver work | `close` |
+
 ## Start every operation
 
 1. Locate `ROADMAP.md` and `roadmap/northstar.toml`. If absent, offer `/setup-northstar`.
-2. Run `python3 skills/northstar/scripts/northstar.py validate`.
-3. Use the engine for mutations; do not hand-edit governed fields when a command exists.
-4. Run the command once without `--apply`, show the preview, and obtain confirmation before applying external or lock-changing operations.
+2. Run the bundled engine's `validate` operation internally.
+3. Use the engine for mutations; do not hand-edit governed fields when an operation exists.
+4. Run the operation in preview mode, translate the preview into plain language, and obtain confirmation before applying external or lock-changing operations.
 
-See [REFERENCE.md](REFERENCE.md) for the schema, ownership rules, state machine, synchronization contract, and concurrency model. See [EXAMPLES.md](EXAMPLES.md) for commands.
+See [REFERENCE.md](REFERENCE.md) for the schema, ownership rules, state machine, synchronization contract, and concurrency model. See [EXAMPLES.md](EXAMPLES.md) for internal engine recipes.
 
 ## Create or import
 

@@ -1,8 +1,8 @@
 # Northstar
 
-A Markdown-first product roadmap that keeps GitHub, GitLab, Wayfinder, and Graphify aligned.
+A Markdown-first product-roadmap skill that keeps GitHub, GitLab, Wayfinder, and Graphify aligned.
 
-Northstar gives a team one compact, reviewable `ROADMAP.md` while making ownership, handoffs, tracker state, Graphify evidence, and delivery closeout auditable. The roadmap remains canonical even when an item is tracked in GitHub and GitLab simultaneously.
+Northstar gives a team one compact, reviewable `ROADMAP.md` while making ownership, handoffs, tracker state, Graphify evidence, and delivery closeout auditable. A roadmap item can be tracked in GitHub, GitLab, or both.
 
 ## Install
 
@@ -12,7 +12,27 @@ npx skills@latest add Navteca/northstar
 
 Choose both `northstar` and `setup-northstar`, then select the coding agents where they should be installed. Run `/setup-northstar` once in each product repository.
 
-Requirements: Python 3.11 or newer. GitHub synchronization uses an authenticated `gh` session; GitLab synchronization uses an authenticated `glab` session. Credentials are never stored by Northstar.
+Requirements: Python 3.11 or newer. GitHub synchronization uses an authenticated `gh` session; GitLab synchronization uses an authenticated `glab` session. Northstar never stores credentials.
+
+## Talk to Northstar
+
+Users express intent in ordinary language. They are not expected to run Northstar's internal engine.
+
+```text
+Set up Northstar for this project and show me the GitHub and GitLab accounts you found.
+
+Add a P1 roadmap story for workspace invitations. As a workspace admin, I want to invite teammates and choose their roles, so that I can onboard my team without support.
+
+Let Maya pick up RM-024 on feat/rm-024-invitations.
+
+Hand RM-024 from Maya to Iker because Maya moved to incident response.
+
+Check whether RM-024 has drifted between the roadmap, GitHub, and GitLab.
+
+RM-024 is finished. The implementation is in PR #142 and Graphify was updated at abc1234.
+```
+
+Northstar interprets the request, validates the roadmap, runs a deterministic preview internally, explains the proposed changes, and asks for confirmation when the operation affects ownership, external trackers, imports, or closeout.
 
 ## What it enforces
 
@@ -25,34 +45,19 @@ Requirements: Python 3.11 or newer. GitHub synchronization uses an authenticated
 - Wayfinder authorization before implementation.
 - Mandatory Graphify verification and roadmap/tracker updates before `Done`.
 
-## Deterministic engine
+## Technically hybrid, experientially a skill
 
-Every mutation previews by default. Add `--apply` only after reviewing it.
-
-```sh
-python3 skills/northstar/scripts/northstar.py doctor
-python3 skills/northstar/scripts/northstar.py validate
-python3 skills/northstar/scripts/northstar.py add --help
-python3 skills/northstar/scripts/northstar.py update --help
-python3 skills/northstar/scripts/northstar.py claim --help
-python3 skills/northstar/scripts/northstar.py handoff --help
-python3 skills/northstar/scripts/northstar.py reconcile --help
-python3 skills/northstar/scripts/northstar.py close --help
-```
-
-Start with the [`ROADMAP.md` sample](examples/sample-project/ROADMAP.md), then follow the [`complete workflow`](examples/COMPLETE_WORKFLOW.md). Short command recipes remain in [`skills/northstar/EXAMPLES.md`](skills/northstar/EXAMPLES.md).
-
-## How the pieces fit
+Northstar includes a small deterministic engine so important mutations do not depend on the model rewriting Markdown or remote records from memory. The agent—not the user—operates that engine. Direct engine access exists for development, CI, and troubleshooting.
 
 ```text
-Northstar authorizes and records the roadmap item
-    ↓
-Wayfinder executes the claimed item and maintains its map
-    ↓
-Graphify records or verifies the resulting codebase knowledge
-    ↓
-Northstar verifies evidence and closes every linked tracker
+User intent → Northstar skill → preview and confirmation → internal engine
+                                                    ↓
+                         ROADMAP.md + GitHub/GitLab + audit journal
+                                                    ↓
+                                  Wayfinder execution → Graphify → closeout
 ```
+
+Start with the [`ROADMAP.md` sample](examples/sample-project/ROADMAP.md), then follow the user-facing [`complete workflow`](examples/COMPLETE_WORKFLOW.md). Internal engine recipes are documented separately in [`skills/northstar/EXAMPLES.md`](skills/northstar/EXAMPLES.md).
 
 ## Development
 

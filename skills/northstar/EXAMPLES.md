@@ -1,15 +1,33 @@
-# Northstar examples
+# Northstar internal engine recipes
 
-Commands default to a preview. Add `--apply` only after the user approves the displayed operation. Add `--local-only` when preparing a canonical roadmap change that must be merged before publishing it to external trackers.
+This file is for the agent, CI, and troubleshooting. Users normally express intent in natural language; do not ask them to construct these commands.
 
-## Initialize a roadmap
+For every mutation:
+
+1. Translate the user's intent into an engine operation.
+2. Run it without `--apply`.
+3. Translate the preview into plain language.
+4. Ask for confirmation when required by `SKILL.md`.
+5. Repeat with `--apply` internally.
+
+Engine prefix:
 
 ```sh
-python3 skills/northstar/scripts/northstar.py init
-python3 skills/northstar/scripts/northstar.py init --apply
+python3 skills/northstar/scripts/northstar.py
 ```
 
-## Add a ready user story
+## Intent mapping
+
+| User wording | Operation |
+|---|---|
+| “Create/add this story” | `add` |
+| “Change priority/status/title” | `update` |
+| “Pick this up/start this” | `claim` |
+| “Give/transfer this to…” | `handoff` |
+| “Check/fix tracker differences” | `reconcile` |
+| “Finish/close/deliver this” | `close` |
+
+## Add a ready story
 
 ```sh
 python3 skills/northstar/scripts/northstar.py add \
@@ -21,7 +39,7 @@ python3 skills/northstar/scripts/northstar.py add \
   --acceptance "An invitation can be accepted once"
 ```
 
-## Import externally-created work
+## Import external work
 
 ```sh
 python3 skills/northstar/scripts/northstar.py add \
@@ -33,19 +51,7 @@ python3 skills/northstar/scripts/northstar.py add \
   --origin-url https://github.com/acme/product/issues/42
 ```
 
-With `--apply`, Northstar links rather than duplicates the source issue and comments that it was imported into canonical `ROADMAP.md`.
-
-## Reconcile remote drift
-
-```sh
-python3 skills/northstar/scripts/northstar.py reconcile RM-024
-python3 skills/northstar/scripts/northstar.py reconcile RM-024 \
-  --strategy canonical --actor Maya --reason "Restore the approved roadmap state" --apply
-```
-
-The first command only reports differences. To import a chosen remote change, use the normal gated `add --origin`, `claim`, `handoff`, `update`, or `close` command; this preserves its audit and validation rules.
-
-## Claim, hand off, and close
+## Claim, hand off, reconcile, and close
 
 ```sh
 python3 skills/northstar/scripts/northstar.py claim RM-024 \
@@ -55,6 +61,8 @@ python3 skills/northstar/scripts/northstar.py claim RM-024 \
 
 python3 skills/northstar/scripts/northstar.py handoff RM-024 \
   --actor Maya --to Iker --reason "Pairing ownership transferred"
+
+python3 skills/northstar/scripts/northstar.py reconcile RM-024
 
 python3 skills/northstar/scripts/northstar.py close RM-024 \
   --actor Iker \
