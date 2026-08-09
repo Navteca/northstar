@@ -5,7 +5,7 @@ Northstar remains its own skill and repository. Navteca's Wayfinder integration 
 ## Branch policy
 
 - `main` mirrors `mattpocock/skills` and is never customized.
-- `navteca` is the stable downstream branch and the installation source for the team.
+- `navteca` is the fork's default branch, stable downstream line, and installation source for the team.
 - Short-lived `navteca/*` branches contain each focused change and merge into `navteca`.
 - `upstream` points to `mattpocock/skills`; `origin` points to the Navteca fork.
 
@@ -32,10 +32,19 @@ Record every downstream-only change in the fork's `NAVTECA.md` with:
 - validation command;
 - whether the patch can be removed after a future upstream release.
 
-Install from the stable downstream branch explicitly:
+Because the fork defaults to the stable downstream branch, install the relevant workflow as:
 
 ```sh
-npx skills@latest add Navteca/skills@navteca
+npx skills@latest add Navteca/skills \
+  --skill setup-matt-pocock-skills \
+  --skill wayfinder \
+  --skill grilling \
+  --skill domain-modeling \
+  --skill research \
+  --skill prototype \
+  --skill to-spec \
+  --skill to-tickets \
+  --skill implement
 ```
 
-Pin a commit for reproducible team rollouts when the installer supports it. Test upgrades in one repository before changing the team-wide installation reference.
+The skills CLI currently documents repository/default-branch installation, not a branch selector for `add`; making `navteca` the default avoids relying on undocumented syntax. Commit the generated skills lock when the installer creates one, and test upgrades in one repository before updating the team.
