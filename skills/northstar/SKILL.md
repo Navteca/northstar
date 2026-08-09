@@ -1,67 +1,62 @@
 ---
 name: northstar
-description: Maintains a compact Markdown product roadmap and safely coordinates execution through GitHub, GitLab, Wayfinder, and Graphify. Use when creating, updating, prioritizing, claiming, handing off, importing, reconciling, or closing roadmap items, user stories, product features, or roadmap tasks.
+description: Maintains a compact repository-owned product roadmap and coordinates prioritization, pickup, ownership, handoffs, tracker links, reconciliation, and closeout. Use when creating or updating roadmap items, choosing the next item, importing GitHub/GitLab work, handing work to a teammate, or auditing delivery history.
 ---
 
 # Northstar
 
-Northstar governs the roadmap; Wayfinder executes authorized work. `ROADMAP.md` is canonical.
+Northstar is the portfolio and handoff layer. `ROADMAP.md` is the canonical compact index; linked briefs, tracker issues, plans, pull requests, and repository context hold the detail.
 
-The user expresses intent in natural language. The agent runs the bundled engine internally; never ask the user to translate their request into Python or CLI flags. Show human-readable previews and results, not raw commands, unless the user asks for troubleshooting details.
+Users speak naturally. Operate the bundled engine internally and show plain-language previews. Do not ask users to run its commands unless troubleshooting.
 
-## Intent routing
+## Route the intent
 
-| User intent | Internal operation |
+| Intent | Operation |
 |---|---|
 | Set up or connect services | `/setup-northstar`, then `doctor` / `init` |
 | Create or import a story | `add` |
 | Refine, reprioritize, defer, or retire | `update` |
-| Pick up, start, or claim work | `claim` |
+| Pick up or start one item | `pickup` |
+| Attach or finish a discovery plan | `link-plan` |
 | Transfer ownership | `handoff` |
-| Check or repair GitHub/GitLab drift | `reconcile` |
-| Finish or deliver work | `close` |
+| Check or repair tracker drift | `reconcile` |
+| Finish delivery | `close` |
 
-## Start every operation
+## Begin every operation
 
-1. Locate `ROADMAP.md` and `roadmap/northstar.toml`. If absent, offer `/setup-northstar`.
-2. Run the bundled engine's `validate` operation internally.
-3. Use the engine for mutations; do not hand-edit governed fields when an operation exists.
-4. Run the operation in preview mode, translate the preview into plain language, and obtain confirmation before applying external or lock-changing operations.
+1. Find `ROADMAP.md` and `roadmap/northstar.toml`; offer `/setup-northstar` when absent.
+2. Validate the roadmap and linked brief.
+3. Preview the operation and explain it in ordinary language.
+4. Confirm before changing ownership, external trackers, imported work, or closeout.
+5. Apply through the bundled engine and report local plus per-service results.
 
-See [REFERENCE.md](REFERENCE.md) for the schema, ownership rules, state machine, synchronization contract, and concurrency model. See [EXAMPLES.md](EXAMPLES.md) for internal engine recipes.
+## Govern roadmap work
 
-## Create or import
+- Every row has a permanent ascending `RM-###` ID, `P0`–`P3` priority, mandatory linked user story, and checkbox acceptance criteria. Actively owned work also requires its target branch; expected completion remains optional in the brief.
+- One `Home` tracker owns execution context: `github`, `gitlab`, or `local`. A row may still link both GitHub and GitLab for team visibility.
+- `Plan` points to one authoritative planning artifact. It may be an issue, brief, or Wayfinder map; never create duplicate maps across services.
+- Work status and sync health are independent.
+- Imported work is explicitly marked at its source as imported into canonical `ROADMAP.md`.
 
-- Require a full “As a/an/the …, I want …, so that …” user story and checkbox acceptance criteria in the linked brief.
-- Assign the next permanent sequential ID; never renumber or reuse IDs.
-- A native item may create GitHub and GitLab records after approved setup. An imported item links its source, records provenance, and marks the remote record as imported into canonical `ROADMAP.md`.
+## Pick up and hand off
 
-## Update and prioritize
+- Pick up only a `Ready` item that is unowned or already reserved to the same teammate. Require its target branch, record one owner, and notify every linked tracker.
+- If the work is already clear, move directly to `In Progress`; Wayfinder is not required.
+- If the work is large or foggy, offer Wayfinder. Create its map only on `Home`, write its URL to `Plan`, and use `Planning` until the map clears. Wayfinder then writes durable context back and returns the item to `Ready`; it never marks delivery `Done`.
+- The canonical lock is effective after the roadmap change reaches the shared default branch. Re-read it before work starts.
+- Handoffs preserve the item and plan, require a reason, and record previous owner, new owner, actor, and timestamp. Maintainer overrides must be explicit.
 
-Use `northstar.py update` for title, priority, and planning-state changes. Require an actor and reason. Keep work status separate from sync health.
+## Finish every item
 
-## Claim and hand off
+1. Verify every acceptance criterion.
+2. Record durable context for the next teammate. Prefer Graphify when installed and useful; otherwise link repository docs, decisions, commits, PRs/MRs, or tracker evidence.
+3. Record delivery evidence, update `ROADMAP.md` and the brief, synchronize all linked trackers, and append the audit/journal entries.
+4. Mark `Done` only after those updates succeed locally; report any `Partial` or `Error` sync separately.
 
-- Claim only a `Ready` item with an owner, target branch, and Wayfinder map. The engine locks it exclusively and records the event in the brief, audit log, journal, and linked trackers.
-- The claim is authoritative only after its canonical roadmap change reaches the default branch. Wayfinder must wait for that point.
-- Collaborators may join without replacing the owner.
-- The current owner may hand off. A designated product owner/maintainer may override with `--override`; a reason is always mandatory.
-
-## Reconcile
-
-- Never silently import remote changes. Compare them and ask whether to import, restore the canonical roadmap state, or ignore and mark drift.
-- An item may link GitHub, GitLab, or both. Publish to every linked service; journal partial failures and set `Sync` to `Partial` or `Error` without changing work `Status`.
-- Resolve outstanding sync state before closeout.
-
-## Finish
-
-1. Verify every acceptance criterion is checked.
-2. Have Wayfinder update Graphify. If the graph does not change, record `Verified-no-change:` with evidence.
-3. Run the close preview, confirm it, then apply it.
-4. Do not mark `Done` until Graphify evidence, delivery evidence, `ROADMAP.md`, item brief, audit log, and every linked tracker are current.
+See [REFERENCE.md](REFERENCE.md) for the contract and [EXAMPLES.md](EXAMPLES.md) for internal recipes.
 
 ## Guardrails
 
-- Never store credentials; use authenticated `gh` and `glab` sessions selected during setup.
-- Never overwrite drift, override a lock, create external records, or close remote work without confirmation.
-- GitHub/GitLab updates are the v1 team signal. Do not send chat notifications unless an adapter is configured later.
+- Never store credentials; use the authenticated `gh` and `glab` sessions approved during setup.
+- Never silently choose a side during drift, override a lock, create external records, or close remote work.
+- Northstar is not an implementation planner, project-management UI, or chat notifier. Delegate discovery to Wayfinder and keep detailed execution/audit evidence in the repository and trackers.

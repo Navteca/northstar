@@ -1,28 +1,25 @@
 ---
 name: setup-northstar
-description: Configures Northstar for one repository by initializing its roadmap and detecting authenticated GitHub, GitLab, Wayfinder, and Graphify capabilities. Use when first enabling Northstar, connecting or changing GitHub/GitLab destinations, or verifying roadmap setup.
+description: Configures Northstar for one repository, detects an existing roadmap and authenticated GitHub/GitLab sessions, and offers optional Wayfinder and Graphify companions. Use when first enabling Northstar, connecting or changing tracker destinations, or checking roadmap integration health.
 disable-model-invocation: true
 ---
 
 # Set up Northstar
 
-Run once per repository and again only to change an integration.
+Run once per repository and again to change an integration.
 
-## Inspect
+## Inspect before changing anything
 
-1. Run `python3 skills/northstar/scripts/northstar.py doctor`.
-2. Locate `ROADMAP.md` and `roadmap/northstar.toml`.
-3. If absent, preview and—with confirmation—run `northstar.py init --apply`.
-4. Check authenticated `gh auth status` and `glab auth status`. Never expose, save, or request tokens.
-5. Detect Wayfinder and Graphify. Explain any missing closeout dependency before proceeding.
+1. Run the bundled `doctor` operation and locate `ROADMAP.md` plus `roadmap/northstar.toml`.
+2. If a roadmap exists, validate and preserve it. If absent, preview initialization and ask before applying.
+3. Detect authenticated `gh` and `glab` sessions. Show account names without exposing or storing tokens.
+4. Detect Wayfinder and Graphify, but treat both as optional companions.
 
-## Select destinations
+## Select tracker destinations
 
-Show the authenticated accounts and discovered GitHub repositories/Projects and GitLab projects/boards. Ask which exact destinations to synchronize; support either or both. Never select one merely because it is available.
+Show the authenticated accounts and accessible repository/project choices. Ask which exact GitHub destination, GitLab destination, or both should synchronize. For dual tracking, ask which service is the default `Home`; individual rows may override it. Never select a session merely because it exists.
 
-## Configure
-
-Edit `roadmap/northstar.toml`, which stores safe identifiers only:
+Store safe identifiers only:
 
 ```toml
 version = 1
@@ -41,8 +38,14 @@ github = "maya-gh"
 gitlab = "maya-gl"
 ```
 
-Add a stable identity mapping for each teammate who may claim work. Ask for confirmation before writing or replacing configuration. Never store credentials.
+Map each teammate's stable roadmap name to enabled-service usernames. Ask before creating or replacing configuration.
+
+## Offer companions
+
+- Wayfinder is recommended only for large, foggy roadmap items. It brings its own workflow dependencies from the skills distribution. If unavailable, explain the benefit and offer to install the approved Navteca skills distribution; never install without consent.
+- Graphify is recommended for persistent codebase context, especially on architecture-heavy projects. Northstar still works without it by linking durable repository/tracker evidence. If its skill is present but the `graphify` executable is absent, offer `uv tool install --upgrade graphifyy` with consent.
+- Do not install Matt Pocock's entire collection merely because Northstar is installed. Keep unrelated skills optional.
 
 ## Verify
 
-Run `northstar.py validate`, summarize connected and unavailable services, and explain that each item may link to GitHub, GitLab, or both. Re-running setup must show the existing mapping before proposing changes.
+Validate the roadmap, summarize connected/unavailable services and optional companions, and explain that each item has one `Home` while its GitHub and GitLab links may both be populated. Re-running setup must show the existing mapping before proposing changes.

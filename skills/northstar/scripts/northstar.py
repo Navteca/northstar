@@ -17,10 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
-HEADER = ["ID", "P", "Status", "Story", "Owner", "Branch", "GitHub", "GitLab", "Wayfinder", "Sync"]
-STATUSES = {"Candidate", "Planned", "Ready", "In Progress", "Done", "Deferred", "Retired"}
+HEADER = ["ID", "P", "Status", "Story", "Owner", "Branch", "Home", "GitHub", "GitLab", "Plan", "Sync"]
+STATUSES = {"Candidate", "Planned", "Planning", "Ready", "In Progress", "Blocked", "Done", "Deferred", "Retired"}
 SYNC_STATES = {"Local", "Synced", "Drift", "Partial", "Error"}
 PRIORITIES = {"P0", "P1", "P2", "P3"}
+HOME_TRACKERS = {"github", "gitlab", "local"}
 EMPTY = "—"
 ID_RE = re.compile(r"RM-(\d{3,})$")
 STORY_RE = re.compile(r"As (?:a|an|the) .+?, I want .+?, so that .+?\.?$", re.I)
@@ -209,16 +210,27 @@ def validate(root: Path) -> list[str]:
         criteria = re.findall(r"^- \[([ xX])] .+$", section(text, "Acceptance criteria"), re.M)
         if not criteria:
             errors.append(f"{item_id}: at least one checkbox acceptance criterion is required")
-        if item["Status"] == "In Progress":
-            for column in ("Owner", "Branch", "Wayfinder"):
-                if item[column] == EMPTY:
-                    errors.append(f"{item_id}: In Progress requires {column}")
+        if item["Home"] != EMPTY and item["Home"] not in HOME_TRACKERS:
+            errors.append(f"{item_id}: invalid home tracker {item['Home']!r}")
+        if item["Status"] in {"Planning", "Ready", "In Progress", "Blocked", "Done"}:
+            if item["Home"] == EMPTY:
+                errors.append(f"{item_id}: {item['Status']} requires Home")
+            elif item["Home"] == "github" and item["GitHub"] == EMPTY:
+                errors.append(f"{item_id}: GitHub home requires a GitHub link")
+            elif item["Home"] == "gitlab" and item["GitLab"] == EMPTY:
+                errors.append(f"{item_id}: GitLab home requires a GitLab link")
+        if item["Status"] in {"Planning", "In Progress", "Blocked"} and item["Owner"] == EMPTY:
+            errors.append(f"{item_id}: {item['Status']} requires Owner")
+        if item["Status"] in {"Planning", "In Progress", "Blocked", "Done"} and item["Branch"] == EMPTY:
+            errors.append(f"{item_id}: {item['Status']} requires target Branch")
+        if item["Status"] == "Planning" and item["Plan"] == EMPTY:
+            errors.append(f"{item_id}: Planning requires Plan")
         if item["Status"] == "Done":
             if any(value == " " for value in criteria):
                 errors.append(f"{item_id}: Done requires all acceptance criteria checked")
-            graphify = field(text, "Graphify")
-            if not (graphify.startswith("Updated:") or graphify.startswith("Verified-no-change:")):
-                errors.append(f"{item_id}: Done requires Graphify update evidence")
+            context = field(text, "Context")
+            if not context or context in {EMPTY, "Pending"}:
+                errors.append(f"{item_id}: Done requires durable context evidence")
     return errors
 
 
@@ -238,7 +250,7 @@ def next_id(roadmap: Roadmap) -> str:
     return f"RM-{max(numbers, default=0) + 1:03d}"
 
 
-def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str) -> str:
+def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str, home: str) -> str:
     checks = "\n".join(f"- [ ] {value.strip()}" for value in criteria)
     return f"""# {item_id} — {title}
 
@@ -263,10 +275,11 @@ def new_brief(item_id: str, title: str, priority: str, story: str, criteria: lis
 - Owner: {EMPTY}
 - Collaborators: {EMPTY}
 - Branch: {EMPTY}
+- Home: {home}
 - GitHub: {EMPTY}
 - GitLab: {EMPTY}
-- Wayfinder: {EMPTY}
-- Graphify: Pending
+- Plan: {EMPTY}
+- Context: Pending
 
 ## Completion evidence
 
@@ -281,12 +294,12 @@ def new_brief(item_id: str, title: str, priority: str, story: str, criteria: lis
 """
 
 
-def audit(root: Path, item_id: str, event: str, old: str, new: str, actor: str, branch: str, detail: str) -> None:
+def audit(root: Path, item_id: str, event: str, old: str, new: str, actor: str, context: str, detail: str) -> None:
     path = root / "roadmap" / "audit.md"
     if not path.exists():
         atomic_write(path, AUDIT_TEMPLATE)
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(render_row([now(), item_id, event, old, new, actor, branch or EMPTY, md_escape(detail)]) + "\n")
+        stream.write(render_row([now(), item_id, event, old, new, actor, context or EMPTY, md_escape(detail)]) + "\n")
 
 
 def load_config(root: Path) -> dict[str, Any]:
@@ -500,7 +513,7 @@ def reconcile_item(args: argparse.Namespace) -> None:
         if args.strategy == "ignore":
             item["Sync"] = "Drift"
             roadmap.save()
-            audit(root, args.item, "Reconcile ignored", item["Status"], item["Status"], args.actor, item["Branch"], args.reason)
+            audit(root, args.item, "Reconcile ignored", item["Status"], item["Status"], args.actor, item["Plan"], args.reason)
             journal(root, args.item, "reconcile-ignore", snapshots)
             return
         brief = brief_path(root, item).read_text(encoding="utf-8")
@@ -509,7 +522,7 @@ def reconcile_item(args: argparse.Namespace) -> None:
         results.extend(update_remotes(config, item, event, item["Owner"], detail=f"canonical reconciliation by {args.actor}: {args.reason}"))
         item["Sync"] = sync_state(results)
         roadmap.save()
-        audit(root, args.item, "Reconciled canonical", "Drift", item["Sync"], args.actor, item["Branch"], args.reason)
+        audit(root, args.item, "Reconciled canonical", "Drift", item["Sync"], args.actor, item["Plan"], args.reason)
         journal(root, args.item, "reconcile-canonical", results)
 
 
@@ -529,18 +542,26 @@ def add_item(args: argparse.Namespace) -> None:
         roadmap = Roadmap.load(root / "ROADMAP.md")
         item_id = next_id(roadmap)
         relative = Path("roadmap") / "items" / f"{item_id}.md"
-        item = {"ID": item_id, "P": args.priority, "Status": args.status, "Story": f"[{md_escape(args.title)}]({relative.as_posix()})", "Owner": EMPTY, "Branch": EMPTY, "GitHub": EMPTY, "GitLab": EMPTY, "Wayfinder": EMPTY, "Sync": "Local"}
+        item = {"ID": item_id, "P": args.priority, "Status": args.status, "Story": f"[{md_escape(args.title)}]({relative.as_posix()})", "Owner": EMPTY, "Branch": EMPTY, "Home": args.home, "GitHub": EMPTY, "GitLab": EMPTY, "Plan": EMPTY, "Sync": "Local"}
         if args.origin != "native":
             if not args.origin_url:
                 raise NorthstarError("--origin-url is required when importing external work")
             number = args.origin_url.rstrip("/").rsplit("/", 1)[-1]
             item["GitHub" if args.origin == "github" else "GitLab"] = f"[#{number}]({args.origin_url})"
-        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url)
+        if args.local_only and args.home == "github" and item["GitHub"] == EMPTY:
+            raise NorthstarError("GitHub home requires a linked GitHub issue")
+        if args.local_only and args.home == "gitlab" and item["GitLab"] == EMPTY:
+            raise NorthstarError("GitLab home requires a linked GitLab issue")
+        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url, args.home)
         atomic_write(root / relative, brief)
         config = load_config(root)
         results = [] if args.local_only else create_remotes(config, item, brief)
         if args.origin != "native" and not args.local_only:
             results.extend(mark_import(config, item, args.origin))
+        if args.home == "github" and item["GitHub"] == EMPTY:
+            raise NorthstarError("GitHub home requires a linked or configured GitHub issue")
+        if args.home == "gitlab" and item["GitLab"] == EMPTY:
+            raise NorthstarError("GitLab home requires a linked or configured GitLab issue")
         item["Sync"] = sync_state(results)
         roadmap.items.append(item)
         roadmap.save()
@@ -549,31 +570,66 @@ def add_item(args: argparse.Namespace) -> None:
         print(item_id)
 
 
-def claim_item(args: argparse.Namespace) -> None:
+def pickup_item(args: argparse.Namespace) -> None:
     root = args.root.resolve()
     if not args.apply:
-        print(json.dumps({"action": "claim", "item": args.item, "owner": args.owner, "branch": args.branch, "wayfinder": args.wayfinder}, indent=2))
+        print(json.dumps({"action": "pickup", "item": args.item, "owner": args.owner, "branch": args.branch, "home": args.home, "planning": args.planning, "plan": args.plan}, indent=2))
         return
     with workspace_lock(root):
         preflight(root)
         roadmap = Roadmap.load(root / "ROADMAP.md")
         item = roadmap.find(args.item)
         if item["Status"] != "Ready":
-            raise NorthstarError(f"{args.item} must be Ready before it can be claimed")
-        if item["Owner"] != EMPTY:
+            raise NorthstarError(f"{args.item} must be Ready before it can be picked up")
+        if item["Owner"] not in {EMPTY, args.owner}:
             raise NorthstarError(f"{args.item} is locked to {item['Owner']}")
-        item.update({"Status": "In Progress", "Owner": args.owner, "Branch": args.branch, "Wayfinder": args.wayfinder, "Sync": "Local"})
+        home = args.home or item["Home"]
+        if home == EMPTY:
+            raise NorthstarError("Pick-up requires a home tracker")
+        if args.planning and not args.plan:
+            raise NorthstarError("Planning with Wayfinder requires the canonical map URL in --plan")
+        if home == "github" and item["GitHub"] == EMPTY:
+            raise NorthstarError("GitHub home requires a linked GitHub issue")
+        if home == "gitlab" and item["GitLab"] == EMPTY:
+            raise NorthstarError("GitLab home requires a linked GitLab issue")
+        status = "Planning" if args.planning else "In Progress"
+        plan = args.plan or item["Plan"]
+        item.update({"Status": status, "Owner": args.owner, "Branch": args.branch, "Home": home, "Plan": plan, "Sync": "Local"})
         path = brief_path(root, item)
         brief = path.read_text(encoding="utf-8")
-        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Wayfinder", args.wayfinder)):
+        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Home", home), ("Plan", plan)):
             brief = replace_field(brief, name, value)
-        brief = append_history(brief, "Claimed", args.actor, f"Owner {args.owner}; branch {args.branch}; Wayfinder {args.wayfinder}")
+        brief = append_history(brief, "Picked up", args.actor, f"Owner {args.owner}; branch {args.branch}; home {home}; status {status}; plan {plan}")
         atomic_write(path, brief)
-        results = [] if args.local_only else update_remotes(load_config(root), item, "claimed", args.owner, detail=f"claimed by {args.owner} on {args.branch}")
+        results = [] if args.local_only else update_remotes(load_config(root), item, "claimed", args.owner, detail=f"picked up by {args.owner}; home {home}; status {status}")
         item["Sync"] = sync_state(results)
         roadmap.save()
-        audit(root, args.item, "Claimed", EMPTY, args.owner, args.actor, args.branch, args.wayfinder)
-        journal(root, args.item, "claimed", results)
+        audit(root, args.item, "Picked up", "Ready", status, args.actor, args.branch, f"Owner {args.owner}; home {home}; plan {plan}")
+        journal(root, args.item, "picked-up", results)
+
+
+def link_plan(args: argparse.Namespace) -> None:
+    root = args.root.resolve()
+    if not args.apply:
+        print(json.dumps({"action": "link-plan", "item": args.item, "plan": args.plan, "status": args.status}, indent=2))
+        return
+    with workspace_lock(root):
+        preflight(root)
+        roadmap = Roadmap.load(root / "ROADMAP.md")
+        item = roadmap.find(args.item)
+        if item["Owner"] == EMPTY:
+            raise NorthstarError(f"{args.item} must be owned before linking active planning")
+        old = item["Status"]
+        item["Plan"], item["Status"], item["Sync"] = args.plan, args.status, "Local"
+        path = brief_path(root, item)
+        brief = replace_field(path.read_text(encoding="utf-8"), "Plan", args.plan)
+        brief = append_history(brief, "Plan linked", args.actor, f"{args.plan}; {old} to {args.status}; {args.reason}")
+        atomic_write(path, brief)
+        results = [] if args.local_only else update_remotes(load_config(root), item, "updated", item["Owner"], detail=f"plan {args.plan}; {old} → {args.status}")
+        item["Sync"] = sync_state(results)
+        roadmap.save()
+        audit(root, args.item, "Plan linked", old, args.status, args.actor, args.plan, args.reason)
+        journal(root, args.item, "plan-linked", results)
 
 
 def update_item(args: argparse.Namespace) -> None:
@@ -589,7 +645,7 @@ def update_item(args: argparse.Namespace) -> None:
         roadmap = Roadmap.load(root / "ROADMAP.md")
         item = roadmap.find(args.item)
         if item["Status"] in {"In Progress", "Done"} and args.status:
-            raise NorthstarError("Use claim, handoff, or close for active/completed lifecycle transitions")
+            raise NorthstarError("Use pickup, link-plan, handoff, or close for active/completed lifecycle transitions")
         before = f"P={item['P']}; Status={item['Status']}"
         path = brief_path(root, item)
         brief = path.read_text(encoding="utf-8")
@@ -608,7 +664,7 @@ def update_item(args: argparse.Namespace) -> None:
         results = [] if args.local_only else update_remotes(load_config(root), item, "updated", item["Owner"], detail=f"{before} → {after}; {args.reason}")
         item["Sync"] = sync_state(results)
         roadmap.save()
-        audit(root, args.item, "Updated", before, after, args.actor, item["Branch"], args.reason)
+        audit(root, args.item, "Updated", before, after, args.actor, item["Plan"], args.reason)
         journal(root, args.item, "updated", results)
 
 
@@ -621,7 +677,7 @@ def handoff_item(args: argparse.Namespace) -> None:
         preflight(root)
         roadmap = Roadmap.load(root / "ROADMAP.md")
         item = roadmap.find(args.item)
-        if item["Status"] != "In Progress" or item["Owner"] == EMPTY:
+        if item["Status"] not in {"Planning", "In Progress", "Blocked"} or item["Owner"] == EMPTY:
             raise NorthstarError(f"{args.item} is not actively owned")
         previous = item["Owner"]
         if args.actor != previous and not args.override:
@@ -636,14 +692,14 @@ def handoff_item(args: argparse.Namespace) -> None:
         results = [] if args.local_only else update_remotes(load_config(root), item, "handoff", args.to, previous, args.reason)
         item["Sync"] = sync_state(results)
         roadmap.save()
-        audit(root, args.item, "Handoff override" if args.override else "Handoff", previous, args.to, args.actor, item["Branch"], args.reason)
+        audit(root, args.item, "Handoff override" if args.override else "Handoff", previous, args.to, args.actor, item["Plan"], args.reason)
         journal(root, args.item, "handoff", results)
 
 
 def close_item(args: argparse.Namespace) -> None:
     root = args.root.resolve()
     if not args.apply:
-        print(json.dumps({"action": "close", "item": args.item, "graphify": args.graphify, "evidence": args.evidence}, indent=2))
+        print(json.dumps({"action": "close", "item": args.item, "context": args.context, "evidence": args.evidence}, indent=2))
         return
     with workspace_lock(root):
         preflight(root)
@@ -656,18 +712,18 @@ def close_item(args: argparse.Namespace) -> None:
         unchecked = re.findall(r"^- \[ ] .+$", section(brief, "Acceptance criteria"), re.M)
         if unchecked:
             raise NorthstarError(f"{args.item} has {len(unchecked)} unchecked acceptance criteria")
-        if not (args.graphify.startswith("Updated:") or args.graphify.startswith("Verified-no-change:")):
-            raise NorthstarError("Graphify evidence must start with 'Updated:' or 'Verified-no-change:'")
-        brief = replace_field(brief, "Graphify", args.graphify)
+        if not args.context.strip():
+            raise NorthstarError("Durable context evidence is required")
+        brief = replace_field(brief, "Context", args.context)
         brief = replace_field(brief, "Pull request / merge request", args.evidence)
         brief = replace_field(brief, "Roadmap and trackers updated", "Yes")
-        brief = append_history(brief, "Closed", args.actor, f"Graphify {args.graphify}; evidence {args.evidence}")
+        brief = append_history(brief, "Closed", args.actor, f"Context {args.context}; evidence {args.evidence}")
         atomic_write(path, brief)
         item["Status"], item["Sync"] = "Done", "Local"
         results = [] if args.local_only else update_remotes(load_config(root), item, "closed", item["Owner"], detail=f"completed by {item['Owner']}; {args.evidence}")
         item["Sync"] = sync_state(results)
         roadmap.save()
-        audit(root, args.item, "Closed", "In Progress", "Done", args.actor, item["Branch"], args.evidence)
+        audit(root, args.item, "Closed", "In Progress", "Done", args.actor, item["Plan"], args.evidence)
         journal(root, args.item, "closed", results)
         post_errors = validate(root)
         if post_errors:
@@ -702,17 +758,29 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--acceptance", action="append", required=True)
     add.add_argument("--origin", choices=["native", "github", "gitlab"], default="native")
     add.add_argument("--origin-url", default="")
+    add.add_argument("--home", choices=sorted(HOME_TRACKERS), default="local")
     add.add_argument("--actor", default="northstar")
     add.add_argument("--local-only", action="store_true")
     add.add_argument("--apply", action="store_true")
-    claim = commands.add_parser("claim")
-    claim.add_argument("item")
-    claim.add_argument("--owner", required=True)
-    claim.add_argument("--branch", required=True)
-    claim.add_argument("--wayfinder", required=True)
-    claim.add_argument("--actor", required=True)
-    claim.add_argument("--local-only", action="store_true")
-    claim.add_argument("--apply", action="store_true")
+    for name in ("pickup", "claim"):
+        pickup = commands.add_parser(name)
+        pickup.add_argument("item")
+        pickup.add_argument("--owner", required=True)
+        pickup.add_argument("--branch", required=True)
+        pickup.add_argument("--home", choices=sorted(HOME_TRACKERS))
+        pickup.add_argument("--plan", default="")
+        pickup.add_argument("--planning", action="store_true")
+        pickup.add_argument("--actor", required=True)
+        pickup.add_argument("--local-only", action="store_true")
+        pickup.add_argument("--apply", action="store_true")
+    plan = commands.add_parser("link-plan")
+    plan.add_argument("item")
+    plan.add_argument("--plan", required=True)
+    plan.add_argument("--status", choices=["Planning", "Ready"], required=True)
+    plan.add_argument("--actor", required=True)
+    plan.add_argument("--reason", required=True)
+    plan.add_argument("--local-only", action="store_true")
+    plan.add_argument("--apply", action="store_true")
     update = commands.add_parser("update")
     update.add_argument("item")
     update.add_argument("--priority", choices=sorted(PRIORITIES))
@@ -733,7 +801,7 @@ def build_parser() -> argparse.ArgumentParser:
     close = commands.add_parser("close")
     close.add_argument("item")
     close.add_argument("--actor", required=True)
-    close.add_argument("--graphify", required=True)
+    close.add_argument("--context", required=True)
     close.add_argument("--evidence", required=True)
     close.add_argument("--local-only", action="store_true")
     close.add_argument("--apply", action="store_true")
@@ -764,8 +832,10 @@ def main(argv: list[str] | None = None) -> int:
                 init_workspace(args.root.resolve())
         elif args.command == "add":
             add_item(args)
-        elif args.command == "claim":
-            claim_item(args)
+        elif args.command in {"pickup", "claim"}:
+            pickup_item(args)
+        elif args.command == "link-plan":
+            link_plan(args)
         elif args.command == "update":
             update_item(args)
         elif args.command == "handoff":
@@ -801,7 +871,7 @@ AUDIT_TEMPLATE = """# Northstar audit log
 
 Append-only history of ownership and roadmap transitions.
 
-| Timestamp | Item | Event | From | To | Actor | Branch | Reason / evidence |
+| Timestamp | Item | Event | From | To | Actor | Context | Reason / evidence |
 |---|---|---|---|---|---|---|---|
 """
 
