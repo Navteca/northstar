@@ -40,7 +40,7 @@ python3 skills/northstar/scripts/northstar.py reconcile --help
 python3 skills/northstar/scripts/northstar.py close --help
 ```
 
-See [`skills/northstar/EXAMPLES.md`](skills/northstar/EXAMPLES.md) for complete workflows.
+Start with the [`ROADMAP.md` sample](examples/sample-project/ROADMAP.md), then follow the [`complete workflow`](examples/COMPLETE_WORKFLOW.md). Short command recipes remain in [`skills/northstar/EXAMPLES.md`](skills/northstar/EXAMPLES.md).
 
 ## How the pieces fit
 

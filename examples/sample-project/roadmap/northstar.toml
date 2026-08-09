@@ -1,0 +1,18 @@
+version = 1
+
+[github]
+enabled = false
+repository = "acme/product"
+project_title = "Product roadmap"
+
+[gitlab]
+enabled = false
+project = "acme/product"
+
+[identities.Maya]
+github = "maya-gh"
+gitlab = "maya-gl"
+
+[identities.Iker]
+github = "iker-gh"
+gitlab = "iker-gl"

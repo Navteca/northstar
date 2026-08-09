@@ -18,3 +18,4 @@ jobs:
           python-version: "3.11"
       - run: python3 -m unittest discover -s skills/northstar/tests -v
       - run: python3 -m py_compile skills/northstar/scripts/northstar.py
+      - run: python3 skills/northstar/scripts/northstar.py --root examples/sample-project validate
