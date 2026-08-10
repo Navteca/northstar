@@ -20,7 +20,7 @@ roadmap/journal/*.json             # per-operation synchronization results
 
 - `Home` is the single execution authority: `github`, `gitlab`, or `local`.
 - GitHub and GitLab links may coexist. They are visibility and synchronization endpoints, not competing authorities.
-- `Plan` is one canonical issue, brief, spec, or Wayfinder map. It is optional until planning begins.
+- `Plan` is one canonical issue, brief, Spec Kit specification, or Wayfinder map. Each brief records `Plan kind: Direct`, `Wayfinder`, or `Spec Kit`; non-direct routes require a plan before active pickup.
 - Full story, criteria, dependencies, optional expected completion date, origin, durable context, and delivery evidence live in the brief.
 
 ## Lifecycle gates
@@ -33,7 +33,7 @@ Candidate → Planned → Ready → In Progress → Done
 ```
 
 - `Ready`: valid story and criteria plus a usable `Home` endpoint.
-- `Planning`: exclusive owner, target branch, `Home`, and one `Plan`; normally a Wayfinder map for genuinely foggy work.
+- `Planning`: exclusive owner, target branch, `Home`, and one `Plan`; the plan kind identifies whether the route is Wayfinder or Spec Kit.
 - `In Progress`: exclusive owner, target branch, and `Home`. A plan is optional.
 - `Blocked`: retains ownership and context while work cannot proceed.
 - `Done`: all criteria checked, durable context evidence, delivery evidence, roadmap/brief update, and recorded sync result.

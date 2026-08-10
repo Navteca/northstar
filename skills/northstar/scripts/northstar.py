@@ -21,6 +21,7 @@ HEADER = ["ID", "P", "Status", "Story", "Owner", "Branch", "Home", "GitHub", "Gi
 STATUSES = {"Candidate", "Planned", "Planning", "Ready", "In Progress", "Blocked", "Done", "Deferred", "Retired"}
 SYNC_STATES = {"Local", "Synced", "Drift", "Partial", "Error"}
 PRIORITIES = {"P0", "P1", "P2", "P3"}
+PLAN_KINDS = {"Direct", "Wayfinder", "Spec Kit"}
 HOME_TRACKERS = {"github", "gitlab", "local"}
 EMPTY = "—"
 ID_RE = re.compile(r"RM-(\d{3,})$")
@@ -225,6 +226,11 @@ def validate(root: Path) -> list[str]:
             errors.append(f"{item_id}: {item['Status']} requires target Branch")
         if item["Status"] == "Planning" and item["Plan"] == EMPTY:
             errors.append(f"{item_id}: Planning requires Plan")
+        plan_kind = field(text, "Plan kind")
+        if plan_kind not in PLAN_KINDS:
+            errors.append(f"{item_id}: Plan kind must be Direct, Wayfinder, or Spec Kit")
+        if item["Status"] in {"Planning", "Ready", "In Progress", "Blocked"} and plan_kind != "Direct" and item["Plan"] == EMPTY:
+            errors.append(f"{item_id}: {plan_kind} route requires Plan before active work")
         if item["Status"] == "Done":
             if any(value == " " for value in criteria):
                 errors.append(f"{item_id}: Done requires all acceptance criteria checked")
@@ -250,7 +256,7 @@ def next_id(roadmap: Roadmap) -> str:
     return f"RM-{max(numbers, default=0) + 1:03d}"
 
 
-def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str, home: str) -> str:
+def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str, home: str, plan_kind: str = "Direct") -> str:
     checks = "\n".join(f"- [ ] {value.strip()}" for value in criteria)
     return f"""# {item_id} — {title}
 
@@ -278,6 +284,7 @@ def new_brief(item_id: str, title: str, priority: str, story: str, criteria: lis
 - Home: {home}
 - GitHub: {EMPTY}
 - GitLab: {EMPTY}
+- Plan kind: {plan_kind}
 - Plan: {EMPTY}
 - Context: Pending
 
@@ -552,7 +559,7 @@ def add_item(args: argparse.Namespace) -> None:
             raise NorthstarError("GitHub home requires a linked GitHub issue")
         if args.local_only and args.home == "gitlab" and item["GitLab"] == EMPTY:
             raise NorthstarError("GitLab home requires a linked GitLab issue")
-        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url, args.home)
+        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url, args.home, getattr(args, "plan_kind", "Direct"))
         atomic_write(root / relative, brief)
         config = load_config(root)
         results = [] if args.local_only else create_remotes(config, item, brief)
@@ -586,8 +593,14 @@ def pickup_item(args: argparse.Namespace) -> None:
         home = args.home or item["Home"]
         if home == EMPTY:
             raise NorthstarError("Pick-up requires a home tracker")
+        requested_plan_kind = getattr(args, "plan_kind", "")
+        plan_kind = requested_plan_kind or field(brief_path(root, item).read_text(encoding="utf-8"), "Plan kind")
+        if args.planning and not requested_plan_kind:
+            plan_kind = "Wayfinder"
         if args.planning and not args.plan:
-            raise NorthstarError("Planning with Wayfinder requires the canonical map URL in --plan")
+            raise NorthstarError(f"Planning with {plan_kind} requires the canonical plan URL in --plan")
+        if args.planning and plan_kind == "Direct":
+            raise NorthstarError("--planning requires --plan-kind Wayfinder or Spec Kit")
         if home == "github" and item["GitHub"] == EMPTY:
             raise NorthstarError("GitHub home requires a linked GitHub issue")
         if home == "gitlab" and item["GitLab"] == EMPTY:
@@ -597,7 +610,7 @@ def pickup_item(args: argparse.Namespace) -> None:
         item.update({"Status": status, "Owner": args.owner, "Branch": args.branch, "Home": home, "Plan": plan, "Sync": "Local"})
         path = brief_path(root, item)
         brief = path.read_text(encoding="utf-8")
-        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Home", home), ("Plan", plan)):
+        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Home", home), ("Plan kind", plan_kind), ("Plan", plan)):
             brief = replace_field(brief, name, value)
         brief = append_history(brief, "Picked up", args.actor, f"Owner {args.owner}; branch {args.branch}; home {home}; status {status}; plan {plan}")
         atomic_write(path, brief)
@@ -622,7 +635,9 @@ def link_plan(args: argparse.Namespace) -> None:
         old = item["Status"]
         item["Plan"], item["Status"], item["Sync"] = args.plan, args.status, "Local"
         path = brief_path(root, item)
-        brief = replace_field(path.read_text(encoding="utf-8"), "Plan", args.plan)
+        plan_kind = getattr(args, "plan_kind", "Wayfinder")
+        brief = replace_field(path.read_text(encoding="utf-8"), "Plan kind", plan_kind)
+        brief = replace_field(brief, "Plan", args.plan)
         brief = append_history(brief, "Plan linked", args.actor, f"{args.plan}; {old} to {args.status}; {args.reason}")
         atomic_write(path, brief)
         results = [] if args.local_only else update_remotes(load_config(root), item, "updated", item["Owner"], detail=f"plan {args.plan}; {old} → {args.status}")
@@ -732,7 +747,7 @@ def close_item(args: argparse.Namespace) -> None:
 
 def doctor(root: Path) -> int:
     report: dict[str, Any] = {"root": str(root.resolve()), "roadmap": (root / "ROADMAP.md").is_file(), "config": (root / "roadmap" / "northstar.toml").is_file()}
-    for executable in ("gh", "glab", "graphify"):
+    for executable in ("gh", "glab", "graphify", "specify"):
         try:
             process = subprocess.run([executable, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
             report[executable] = {"available": process.returncode == 0, "version": process.stdout.splitlines()[0] if process.stdout else ""}
@@ -759,6 +774,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--origin", choices=["native", "github", "gitlab"], default="native")
     add.add_argument("--origin-url", default="")
     add.add_argument("--home", choices=sorted(HOME_TRACKERS), default="local")
+    add.add_argument("--plan-kind", choices=sorted(PLAN_KINDS), default="Direct")
     add.add_argument("--actor", default="northstar")
     add.add_argument("--local-only", action="store_true")
     add.add_argument("--apply", action="store_true")
@@ -769,6 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
         pickup.add_argument("--branch", required=True)
         pickup.add_argument("--home", choices=sorted(HOME_TRACKERS))
         pickup.add_argument("--plan", default="")
+        pickup.add_argument("--plan-kind", choices=sorted(PLAN_KINDS), default="")
         pickup.add_argument("--planning", action="store_true")
         pickup.add_argument("--actor", required=True)
         pickup.add_argument("--local-only", action="store_true")
@@ -776,6 +793,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan = commands.add_parser("link-plan")
     plan.add_argument("item")
     plan.add_argument("--plan", required=True)
+    plan.add_argument("--plan-kind", choices=["Wayfinder", "Spec Kit"], required=True)
     plan.add_argument("--status", choices=["Planning", "Ready"], required=True)
     plan.add_argument("--actor", required=True)
     plan.add_argument("--reason", required=True)
@@ -860,6 +878,15 @@ project_title = ""
 [gitlab]
 enabled = false
 project = "group/project"
+
+[companions]
+profile = "core"
+wayfinder = false
+speckit = false
+graphify = false
+
+[policy]
+default_route = "Direct"
 
 # Map the roadmap's stable teammate name to service usernames.
 # [identities.Maya]

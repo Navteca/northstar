@@ -12,6 +12,7 @@ python3 skills/northstar/scripts/northstar.py
 | “Change priority/status/title” | `update` |
 | “Pick this up/start this” | `pickup` |
 | “Use Wayfinder for this” | `pickup --planning --plan …` or `link-plan` |
+| “Specify this feature before implementation” | `pickup --planning --plan-kind "Spec Kit" --plan …` or `link-plan --plan-kind "Spec Kit"` |
 | “Give/transfer this to…” | `handoff` |
 | “Check/fix tracker differences” | `reconcile` |
 | “Finish/close/deliver this” | `close` |
@@ -28,12 +29,17 @@ python3 skills/northstar/scripts/northstar.py pickup RM-024 \
 
 python3 skills/northstar/scripts/northstar.py pickup RM-025 \
   --owner Maya --actor Maya --branch feat/rm-025-workspace-roles --planning \
-  --plan https://github.com/acme/product/issues/155
+  --plan-kind Wayfinder --plan https://github.com/acme/product/issues/155
 
 python3 skills/northstar/scripts/northstar.py link-plan RM-025 \
   --actor Maya --status Ready \
+  --plan-kind Wayfinder \
   --plan https://github.com/acme/product/issues/155 \
   --reason "Wayfinder map cleared and context captured"
+
+python3 skills/northstar/scripts/northstar.py pickup RM-026 \
+  --owner Iker --actor Iker --branch feat/rm-026-billing \
+  --planning --plan-kind "Spec Kit" --plan docs/specs/rm-026-billing.md
 
 python3 skills/northstar/scripts/northstar.py handoff RM-024 \
   --actor Maya --to Iker --reason "Pairing ownership transferred"

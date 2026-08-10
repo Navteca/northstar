@@ -9,6 +9,15 @@ project_title = "Product roadmap"
 enabled = false
 project = "acme/product"
 
+[companions]
+profile = "Full"
+wayfinder = true
+speckit = true
+graphify = true
+
+[policy]
+default_route = "Direct"
+
 [identities.Maya]
 github = "maya-gh"
 gitlab = "maya-gl"

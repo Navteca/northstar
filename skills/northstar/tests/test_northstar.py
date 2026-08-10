@@ -96,6 +96,21 @@ class NorthstarTests(unittest.TestCase):
         self.pickup(owner="Maya")
         self.assertEqual(northstar.Roadmap.load(self.root / "ROADMAP.md").find("RM-001")["Status"], "In Progress")
 
+    def test_spec_kit_route_is_recorded_and_requires_a_plan(self):
+        self.add_ready()
+        with self.assertRaises(northstar.NorthstarError):
+            self.pickup(planning=True, plan_kind="Spec Kit")
+        self.pickup(planning=True, plan_kind="Spec Kit", plan="docs/specs/rm-001.md")
+        brief = (self.root / "roadmap" / "items" / "RM-001.md").read_text()
+        self.assertIn("- Plan kind: Spec Kit", brief)
+        self.assertEqual(northstar.validate(self.root), [])
+
+    def test_invalid_plan_kind_is_rejected(self):
+        self.add_ready()
+        brief = self.root / "roadmap" / "items" / "RM-001.md"
+        northstar.atomic_write(brief, brief.read_text().replace("- Plan kind: Direct", "- Plan kind: Other"))
+        self.assertTrue(any("Plan kind must be" in error for error in northstar.validate(self.root)))
+
     def test_handoff_requires_owner_or_audited_override(self):
         self.add_ready()
         self.pickup()

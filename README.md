@@ -12,6 +12,8 @@ npx skills@latest add Navteca/northstar
 
 Select `northstar` and `setup-northstar`, then ask the assistant to set up Northstar in a product repository. Users are not expected to learn or run Northstar's internal engine.
 
+Choose capabilities during setup, not blindly during npm installation. See [skills/setup-northstar/PROFILES.md](skills/setup-northstar/PROFILES.md) for Core, Wayfinder, Spec Kit, and Full profiles. Because the standard Skills installer cannot resolve skills from a separate repository, companion installs are explicit and consent-based. Tracker destinations, authenticated accounts, and sync policy are selected later per repository.
+
 Requirements: Python 3.11 or newer. Remote synchronization uses user-approved authenticated `gh` and/or `glab` sessions; Northstar never stores credentials.
 
 ## Talk to Northstar
@@ -42,11 +44,12 @@ Northstar interprets the request, validates the repository contract, previews ma
 | RM-024 | P1 | Planning | [Team invitations](roadmap/items/RM-024.md) | Maya | feat/rm-024-invitations | github | [#142](https://github.com/acme/app/issues/142) | [#87](https://gitlab.com/acme/app/-/issues/87) | [map](https://github.com/acme/app/issues/155) | Synced |
 ```
 
-One `Home` tracker is authoritative for execution context even when both service links exist. The target branch is required for actively owned work. `Plan` is generic and optional; a Wayfinder map belongs there only when discovery is genuinely needed. Expected completion dates remain optional in the linked brief.
+One `Home` tracker is authoritative for execution context even when both service links exist. The target branch is required for actively owned work. Every brief records `Plan kind: Direct`, `Wayfinder`, or `Spec Kit`; non-direct routes must link an approved plan before active pickup. Expected completion dates remain optional in the linked brief.
 
 ## Companions
 
 - **Wayfinder:** recommended for a single large/foggy item. It creates exactly one map on `Home`, writes the link/context back, and returns the item to Northstar when planning clears.
+- **Spec Kit:** recommended when a feature needs a formal specification and acceptance boundary before implementation. Northstar stores the approved spec link and still owns pickup, handoff, closeout, and roadmap updates.
 - **Graphify:** recommended for durable architecture context, not required for every project. Closeout always needs durable evidence, which may instead be repository docs, decisions, commits, PRs/MRs, and tracker links.
 
 This makes Northstar a hybrid internally but a skill experientially: the deterministic engine protects concurrent edits and synchronization; the assistant operates it.

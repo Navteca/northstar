@@ -12,6 +12,8 @@ Northstar detects an existing roadmap before creating one, confirms the authenti
 
 Wayfinder and Graphify are reported as optional companions. Northstar offers installation only with explicit consent.
 
+During setup the team selects a capability profile (Core, Wayfinder, Spec Kit, or Full). The profile controls which companion skills/tools are available; it does not choose tracker accounts or create external records.
+
 ## 2. Add a mandatory user story
 
 The user says:
@@ -38,7 +40,15 @@ Northstar passes exactly that row and its brief to Wayfinder. Wayfinder creates 
 
 Wayfinder resolves decision tickets. When the fog clears, it writes its durable context pointer into the item brief, sets the roadmap item back to `Ready`, and hands off toward specification. It does not implement the feature or mark it `Done`.
 
-## 5. Hand off with an audit trail
+## 5. Use Spec Kit for formal feature definition
+
+For a feature that needs a durable specification, the user says:
+
+> RM-003 needs a formal specification. Let Iker start Spec Kit planning on `feat/rm-003-billing` and link the approved spec before implementation.
+
+Northstar records `Plan kind: Spec Kit`, requires the specification link before the item can become `Ready`, and then returns ownership to the normal implementation workflow. Wayfinder and Spec Kit can be used for different items in the same roadmap.
+
+## 6. Hand off with an audit trail
 
 The user says:
 
@@ -46,7 +56,7 @@ The user says:
 
 Northstar records the previous owner, new owner, actor, reason, timestamp, and plan context in the item history and global audit. It updates assignments and posts the handoff to both linked trackers. If the current owner is unavailable, a maintainer can request an explicitly audited override.
 
-## 6. Finish and preserve context
+## 7. Finish and preserve context
 
 The user says:
 
@@ -54,7 +64,7 @@ The user says:
 
 Northstar requires checked criteria, delivery evidence, and durable context for the next teammate. With Graphify installed, that context might be `Graphify: updated invitation flow at abc123`. Without it, `Repository: docs/decisions/invitations.md; GitHub PR #160` is valid. Northstar updates the roadmap after the work, closes linked tracker records, and records each synchronization result independently from `Done`.
 
-## 7. Import work created outside Northstar
+## 8. Import work created outside Northstar
 
 The user says:
 
@@ -62,7 +72,7 @@ The user says:
 
 Northstar links the original instead of duplicating it, records its origin, creates only the approved missing mirror, and comments on the source that it was created outside Northstar and imported to preserve `ROADMAP.md` as the source of truth.
 
-## 8. Reconcile drift
+## 9. Reconcile drift
 
 The user says:
 
