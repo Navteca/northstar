@@ -1,8 +1,22 @@
 # Northstar
 
+Northstar is the shared product-roadmap and handoff layer for an AI-assisted team.
+
 Northstar is a repository-owned product-roadmap skill for teams that want a compact shared portfolio, clean pickup and handoff, dual GitHub/GitLab visibility, and an auditable trail without adopting another planning database.
 
-It intentionally does less than an implementation planner. Northstar owns **what is in the roadmap, why it matters, its priority, lifecycle, and initiative owner**. Wayfinder can optionally explore one large, foggy item. GitHub/GitLab and the repository hold execution detail.
+It intentionally does less than an implementation planner. Northstar owns **what is in the roadmap, why it matters, its priority, lifecycle, and initiative owner**. GitHub and GitLab provide the visible execution record; the repository keeps the durable brief and audit trail.
+
+The assistant is the interface: teammates ask for a setup, pickup, handoff, reconciliation, or closeout in natural language. The deterministic engine validates and updates the compact Markdown table, item briefs, tracker links, and audit records behind the scenes.
+
+## Why Northstar exists
+
+Teams often have the ingredients for good project context—issues, pull requests, specifications, architecture notes, and chat—but no small, shared index that tells the next teammate what matters and who owns it. Northstar makes `ROADMAP.md` the source of truth without introducing a new planning database.
+
+Three decisions shape the design:
+
+- **Markdown first:** the roadmap is reviewable in Git, easy to merge, and useful even when no tracker is connected.
+- **One home, two mirrors:** an item can link to GitHub and GitLab simultaneously, while one `Home` remains authoritative for execution.
+- **Planning is routed per item:** clear work can start Direct; uncertain work can use Wayfinder; feature work that needs formal requirements can use Spec Kit. Northstar coordinates these routes but does not pretend they are interchangeable.
 
 ## Install
 
@@ -15,6 +29,20 @@ Select `northstar` and `setup-northstar`, then ask the assistant to set up North
 Choose capabilities during setup, not blindly during npm installation. See [skills/setup-northstar/PROFILES.md](skills/setup-northstar/PROFILES.md) for Core, Wayfinder, Spec Kit, and Full profiles. Because the standard Skills installer cannot resolve skills from a separate repository, companion installs are explicit and consent-based. Tracker destinations, authenticated accounts, and sync policy are selected later per repository.
 
 Requirements: Python 3.11 or newer. Remote synchronization uses user-approved authenticated `gh` and/or `glab` sessions; Northstar never stores credentials.
+
+## Setup flow
+
+After installation, ask the assistant to:
+
+1. Detect or initialize `ROADMAP.md` and validate existing item briefs.
+2. Show authenticated GitHub and GitLab sessions without exposing tokens.
+3. Ask which repositories/projects to synchronize, whether to use one or both services, and which service is the default `Home`.
+4. Detect companion skills/tools and ask which capability profile to enable.
+5. Write only safe repository configuration to `roadmap/northstar.toml`.
+
+Installation does not create GitHub/GitLab issues, select accounts, or install optional tools silently. Those are repository decisions that may differ from project to project. Re-running setup shows the current mapping before proposing changes.
+
+See the [profile matrix and detection commands](skills/setup-northstar/PROFILES.md) for the exact choices.
 
 ## Talk to Northstar
 
@@ -48,9 +76,15 @@ One `Home` tracker is authoritative for execution context even when both service
 
 ## Companions
 
-- **Wayfinder:** recommended for a single large/foggy item. It creates exactly one map on `Home`, writes the link/context back, and returns the item to Northstar when planning clears.
-- **Spec Kit:** recommended when a feature needs a formal specification and acceptance boundary before implementation. Northstar stores the approved spec link and still owns pickup, handoff, closeout, and roadmap updates.
-- **Graphify:** recommended for durable architecture context, not required for every project. Closeout always needs durable evidence, which may instead be repository docs, decisions, commits, PRs/MRs, and tracker links.
+- **[Wayfinder](https://github.com/Navteca/skills/blob/navteca/docs/engineering/wayfinder.md):** recommended for a single large or foggy item. It creates one canonical map, writes the link/context back, and returns the item to Northstar when planning clears.
+- **[Spec Kit](https://github.com/github/spec-kit):** recommended when a feature needs a formal specification, acceptance boundary, or multi-step design before implementation. Northstar stores the approved spec link and still owns pickup, handoff, closeout, and roadmap updates.
+- **[Graphify](https://github.com/safishamsi/graphify):** recommended for durable architecture and codebase context. It is not required; repository decisions, commits, PRs/MRs, and tracker links are valid closeout evidence on their own.
+
+The Wayfinder companion stack is maintained in the [Navteca downstream skills fork](https://github.com/Navteca/skills), which preserves a clean upstream mirror of [Matt Pocock's skills](https://github.com/mattpocock/skills) on its `main` branch. Northstar-specific integration stays downstream so the team can update upstream deliberately and contribute generally useful improvements back.
+
+Northstar also relies on the [Skills CLI](https://github.com/vercel-labs/skills) for installation. The CLI installs skills; it does not infer Northstar's tracker configuration or resolve cross-repository companion dependencies, which is why profiles and setup are explicit.
+
+The optional Wayfinder profile pulls a focused set of companion workflows from Navteca's fork: [Wayfinder](https://github.com/Navteca/skills/blob/navteca/docs/engineering/wayfinder.md), [Grilling](https://github.com/Navteca/skills/blob/navteca/docs/productivity/grilling.md), [Domain Modeling](https://github.com/Navteca/skills/blob/navteca/docs/engineering/domain-modeling.md), [Research](https://github.com/Navteca/skills/blob/navteca/docs/engineering/research.md), [Prototype](https://github.com/Navteca/skills/blob/navteca/docs/engineering/prototype.md), [To Spec](https://github.com/Navteca/skills/blob/navteca/docs/engineering/to-spec.md), [To Tickets](https://github.com/Navteca/skills/blob/navteca/docs/engineering/to-tickets.md), and [Implement](https://github.com/Navteca/skills/blob/navteca/docs/engineering/implement.md). They remain separate so teams can install only what they need.
 
 This makes Northstar a hybrid internally but a skill experientially: the deterministic engine protects concurrent edits and synchronization; the assistant operates it.
 
