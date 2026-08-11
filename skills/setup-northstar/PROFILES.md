@@ -30,6 +30,29 @@ For cc-rpi, inspect the project for `.claude/commands/bootstrap` or an `AGENTS.m
 
 Show identities and versions only. Never print tokens. The profile records booleans and a default route in `roadmap/northstar.toml`; it does not claim a missing tool was installed.
 
+## Operational workflows
+
+Setup may copy templates from `assets/github/` or `assets/gitlab/` after approval:
+
+- policy validation for roadmap-changing merge requests;
+- serialized server-side pickup on the single `Home` authority;
+- scheduled drift reporting;
+- archival and generated-view maintenance;
+- optional webhook notification delivery.
+
+The repository's opt-in live contract workflow requires dedicated sandbox projects. Never reuse production trackers for contract tests.
+
+`assets/common/CODEOWNERS.snippet` is a template only. Replace its placeholder with an approved team before merging it into an existing CODEOWNERS file, then protect the default branch. The claim/maintenance bot may need a narrowly scoped bypass to update only Northstar paths.
+
+Preview template installation before applying it:
+
+```sh
+python3 setup-northstar/scripts/install_operational_assets.py --service github
+python3 setup-northstar/scripts/install_operational_assets.py --service github --apply
+```
+
+For GitLab, use `--service gitlab` and include the generated `.gitlab-ci.northstar.yml` from the project's main `.gitlab-ci.yml`.
+
 ## Route guidance
 
 - **Direct:** the story is clear and implementation can begin from the brief.

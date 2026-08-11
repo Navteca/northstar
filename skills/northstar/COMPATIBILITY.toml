@@ -1,0 +1,17 @@
+schema = 1
+
+[tools.github]
+command = "gh"
+capabilities = ["issues", "assignees", "comments", "close"]
+
+[tools.gitlab]
+command = "glab"
+capabilities = ["issues", "assignees", "notes", "close"]
+
+[tools.graphify]
+command = "graphify"
+capabilities = ["update", "query"]
+
+[tools.speckit]
+command = "specify"
+capabilities = ["specify", "plan"]

@@ -45,6 +45,8 @@ Candidate → Planned → Ready → In Progress → Done
 |---|---|
 | Portfolio ordering, story, priority, initiative owner, lifecycle | Northstar |
 | Discovery decisions for one large/foggy item | Wayfinder map on `Home` |
+| Formal feature definition and acceptance boundary | Spec Kit specification linked from `Plan` |
+| Optional Research → Plan → Implement → Validate execution | cc-rpi, recorded as `Execution method: RPI` |
 | Task assignment, commits, reviews, implementation discussion | Home tracker and repository |
 | Optional architecture knowledge graph | Graphify |
 | High-level lifecycle/handoff audit | `roadmap/audit.md` |

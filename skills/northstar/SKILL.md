@@ -1,6 +1,6 @@
 ---
 name: northstar
-description: Maintains a compact repository-owned product roadmap and coordinates prioritization, pickup, ownership, handoffs, tracker links, reconciliation, and closeout. Use when creating or updating roadmap items, choosing the next item, importing GitHub/GitLab work, handing work to a teammate, or auditing delivery history.
+description: Maintains a compact repository-owned product roadmap and coordinates user stories, prioritization, pickup, ownership, handoffs, tracker links, reconciliation, and closeout. Use when creating or updating ROADMAP.md items, choosing the next feature or task, importing GitHub/GitLab work, handing work to a teammate or assistant, or auditing delivery history.
 ---
 
 # Northstar
@@ -29,6 +29,7 @@ Users speak naturally. Operate the bundled engine internally and show plain-lang
 3. Preview the operation and explain it in ordinary language.
 4. Confirm before changing ownership, external trackers, imported work, or closeout.
 5. Apply through the bundled engine and report local plus per-service results.
+6. When synchronization fails, retain the outbox operation and offer a targeted retry; never repeat successful destinations blindly.
 
 ## Govern roadmap work
 
@@ -55,7 +56,7 @@ Users speak naturally. Operate the bundled engine internally and show plain-lang
 3. Record delivery evidence, update `ROADMAP.md` and the brief, synchronize all linked trackers, and append the audit/journal entries.
 4. Mark `Done` only after those updates succeed locally; report any `Partial` or `Error` sync separately.
 
-See [REFERENCE.md](REFERENCE.md) for the contract and [EXAMPLES.md](EXAMPLES.md) for internal recipes.
+See [REFERENCE.md](REFERENCE.md) for the contract, [EXAMPLES.md](EXAMPLES.md) for recipes, and [OPERATIONS.md](OPERATIONS.md) for CI, retry, archival, audit, views, and notifications.
 
 ## Guardrails
 

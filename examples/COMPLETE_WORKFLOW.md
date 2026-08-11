@@ -81,3 +81,13 @@ The user says:
 > Check RM-001 for roadmap, GitHub, and GitLab drift.
 
 Northstar reports differences and asks whether to restore canonical roadmap state, import a chosen remote change through the normal lifecycle gates, or leave it marked `Drift`. It never silently chooses a winner.
+
+## 10. Operate Northstar reliably
+
+For a team installation, setup offers CI templates on the selected `Home` service. Pickup requests are serialized by item ID before they change the default branch. Roadmap-changing pull requests validate legal transitions, ownership history, the audit hash chain, and generated views.
+
+Failed remote destinations create durable outbox operations. A teammate can say:
+
+> Retry failed synchronization and reconcile every item marked Partial or Drift.
+
+Northstar retries only failed services, reports remaining drift, and preserves the original operation ID in remote notes. Scheduled maintenance archives old completed/inactive rows, regenerates the owner/status/priority views and HTML dashboard, and can deliver pending lifecycle events through an approved webhook.

@@ -172,6 +172,13 @@ class NorthstarTests(unittest.TestCase):
                 home="github",
             ))
 
+    def test_story_link_cannot_escape_item_directory(self):
+        self.add_ready()
+        roadmap = northstar.Roadmap.load(self.root / "ROADMAP.md")
+        roadmap.find("RM-001")["Story"] = "[Unsafe](../../outside.md)"
+        roadmap.save()
+        self.assertTrue(any("must stay under roadmap/items" in error for error in northstar.validate(self.root)))
+
     def test_sync_state_does_not_replace_work_status(self):
         self.add_ready()
         roadmap = northstar.Roadmap.load(self.root / "ROADMAP.md")

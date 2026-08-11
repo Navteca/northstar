@@ -1,7 +1,6 @@
 ---
 name: setup-northstar
 description: Configures Northstar for one repository, detects an existing roadmap and authenticated GitHub/GitLab sessions, and offers optional Wayfinder, Spec Kit, Graphify, and cc-rpi companions. Use when first enabling Northstar, connecting or changing tracker destinations, or checking roadmap integration health.
-disable-model-invocation: true
 ---
 
 # Set up Northstar
@@ -14,6 +13,9 @@ Run once per repository and again to change an integration.
 2. If a roadmap exists, validate and preserve it. If absent, preview initialization and ask before applying.
 3. Detect authenticated `gh` and `glab` sessions. Show account names without exposing or storing tokens.
 4. Detect Wayfinder, Graphify, Spec Kit (`specify`), and cc-rpi, but treat companions as explicit profile choices.
+5. Offer the policy, claim, reconciliation, maintenance, notification, and live-contract workflow templates for the selected `Home`; copy none without consent.
+
+Use the bundled `scripts/install_operational_assets.py` to preview approved workflow files before applying them. Never pass `--force` unless the user explicitly approves replacing each reported conflict.
 
 Read [PROFILES.md](PROFILES.md) for supported profiles. Select the profile during repository setup, not silently during package installation. Each roadmap item can still choose Direct, Wayfinder, or Spec Kit independently.
 
@@ -57,9 +59,13 @@ Map each teammate's stable roadmap name to enabled-service usernames. Ask before
 - Wayfinder is recommended only for large, foggy roadmap items. It brings its own workflow dependencies from the skills distribution. If unavailable, explain the benefit and offer to install the approved Navteca skills distribution; never install without consent.
 - Graphify is recommended for persistent codebase context, especially on architecture-heavy projects. Northstar still works without it by linking durable repository/tracker evidence. If its skill is present but the `graphify` executable is absent, offer `uv tool install --upgrade graphifyy` with consent.
 - Spec Kit is recommended for substantial feature work that needs a durable specification before implementation. If selected and `specify` is absent, offer `uv tool install specify-cli` with consent.
-- cc-rpi is an optional execution companion, not a competing roadmap. If selected, it runs its Research → Plan → Implement → Validate workflow while Northstar remains responsible for the item lock, branch, owner, plan link, audit trail, and final roadmap update. Detect a project installation through `.claude/commands/bootstrap` or an `AGENTS.md` compatibility layer. Never clone or install it without consent; offer the upstream instructions at https://github.com/juan294/cc-rpi.
+- cc-rpi is an optional execution companion, not a competing roadmap. If selected, it runs its Research → Plan → Implement → Validate workflow while Northstar remains responsible for the item lock, branch, owner, plan link, audit trail, and final roadmap update. Detect a project installation through `.claude/commands/bootstrap` or an `AGENTS.md` compatibility layer. Never clone or install it without consent; offer the [upstream instructions](https://github.com/juan294/cc-rpi).
 - Do not install Matt Pocock's entire collection merely because Northstar is installed. Keep unrelated skills optional.
 
 ## Verify
 
 Validate the roadmap, summarize connected/unavailable services and selected companions, and explain that each item has one `Home` while its GitHub and GitLab links may both be populated. Re-running setup must show the existing mapping before proposing changes. Never install a companion, create a tracker record, or store credentials without explicit consent.
+
+When operational workflows are enabled, install the claim workflow on `Home` only. Add `roadmap/.northstar.lock` to `.gitignore`; keep the audit chain, journal, outbox, archives, views, dashboard, and notification cursor versioned.
+
+Offer the bundled CODEOWNERS snippet after asking for the actual maintainer team. Recommend protected default branches and signed commits where audit assurance matters; never install a placeholder owner.

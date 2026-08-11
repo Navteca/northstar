@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -13,6 +14,7 @@ import sys
 import tempfile
 import tomllib
 import urllib.parse
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
@@ -147,7 +149,11 @@ def brief_path(root: Path, item: dict[str, str]) -> Path:
     match = LINK_RE.fullmatch(item["Story"])
     if not match:
         raise NorthstarError(f"{item['ID']}: Story must be a Markdown link to its item brief")
-    return root / match.group(2)
+    path = (root / match.group(2)).resolve()
+    allowed = (root / "roadmap" / "items").resolve()
+    if not path.is_relative_to(allowed):
+        raise NorthstarError(f"{item['ID']}: Story brief must stay under roadmap/items")
+    return path
 
 
 def section(text: str, heading: str) -> str:
@@ -255,8 +261,10 @@ def init_workspace(root: Path) -> None:
     atomic_write(audit, AUDIT_TEMPLATE)
 
 
-def next_id(roadmap: Roadmap) -> str:
+def next_id(roadmap: Roadmap, root: Path | None = None) -> str:
     numbers = [int(match.group(1)) for item in roadmap.items if (match := ID_RE.fullmatch(item["ID"]))]
+    if root:
+        numbers.extend(int(match.group(1)) for path in (root / "roadmap" / "items").glob("RM-*.md") if (match := ID_RE.fullmatch(path.stem)))
     return f"RM-{max(numbers, default=0) + 1:03d}"
 
 
@@ -310,8 +318,19 @@ def audit(root: Path, item_id: str, event: str, old: str, new: str, actor: str, 
     path = root / "roadmap" / "audit.md"
     if not path.exists():
         atomic_write(path, AUDIT_TEMPLATE)
+    timestamp = now()
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(render_row([now(), item_id, event, old, new, actor, context or EMPTY, md_escape(detail)]) + "\n")
+        stream.write(render_row([timestamp, item_id, event, old, new, actor, context or EMPTY, md_escape(detail)]) + "\n")
+    chain = root / "roadmap" / "audit.chain.jsonl"
+    previous = "0" * 64
+    if chain.is_file():
+        lines = [line for line in chain.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if lines:
+            previous = json.loads(lines[-1])["hash"]
+    record = {"timestamp": timestamp, "item": item_id, "event": event, "from": old, "to": new, "actor": actor, "context": context or EMPTY, "detail": detail, "previous": previous}
+    record["hash"] = hashlib.sha256(json.dumps(record, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    with chain.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 def load_config(root: Path) -> dict[str, Any]:
@@ -361,11 +380,11 @@ def gitlab_iid(url: str) -> str:
     return match.group(1)
 
 
-def create_remotes(config: dict[str, Any], item: dict[str, str], brief: str) -> list[dict[str, str]]:
+def create_remotes(config: dict[str, Any], item: dict[str, str], brief: str, services: set[str] | None = None) -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
     title = LINK_RE.fullmatch(item["Story"]).group(1)  # validated before mutation
     body = f"Northstar item: `{item['ID']}`\n\n{section(brief, 'User story')}\n\n## Acceptance criteria\n{section(brief, 'Acceptance criteria')}"
-    if enabled(config, "github") and item["GitHub"] == EMPTY:
+    if enabled(config, "github") and item["GitHub"] == EMPTY and (services is None or "github" in services):
         try:
             repo = config["github"]["repository"]
             output = command(["gh", "api", "--method", "POST", f"repos/{repo}/issues", "--input", "-"], {"title": f"[{item['ID']}] {title}", "body": body})
@@ -377,7 +396,7 @@ def create_remotes(config: dict[str, Any], item: dict[str, str], brief: str) -> 
             results.append({"service": "github", "status": "ok", "url": url})
         except Exception as exc:
             results.append({"service": "github", "status": "error", "detail": str(exc)})
-    if enabled(config, "gitlab") and item["GitLab"] == EMPTY:
+    if enabled(config, "gitlab") and item["GitLab"] == EMPTY and (services is None or "gitlab" in services):
         try:
             project = config["gitlab"]["project"]
             endpoint = f"projects/{urllib.parse.quote(project, safe='')}/issues"
@@ -405,10 +424,10 @@ def mark_import(config: dict[str, Any], item: dict[str, str], origin: str) -> li
         return [{"service": origin, "status": "error", "detail": str(exc)}]
 
 
-def update_remotes(config: dict[str, Any], item: dict[str, str], event: str, owner: str, previous: str = "", detail: str = "") -> list[dict[str, str]]:
+def update_remotes(config: dict[str, Any], item: dict[str, str], event: str, owner: str, previous: str = "", detail: str = "", services: set[str] | None = None, operation_id: str = "") -> list[dict[str, str]]:
     results: list[dict[str, str]] = []
-    marker = f"[northstar:{item['ID']}] {event}: {detail}".strip()
-    if item["GitHub"] != EMPTY:
+    marker = f"[northstar:{item['ID']}]{f'[operation:{operation_id}]' if operation_id else ''} {event}: {detail}".strip()
+    if item["GitHub"] != EMPTY and (services is None or "github" in services):
         try:
             url = LINK_RE.fullmatch(item["GitHub"]).group(2)
             if event in {"claimed", "handoff"}:
@@ -425,7 +444,7 @@ def update_remotes(config: dict[str, Any], item: dict[str, str], event: str, own
             results.append({"service": "github", "status": "ok", "url": url})
         except Exception as exc:
             results.append({"service": "github", "status": "error", "detail": str(exc)})
-    if item["GitLab"] != EMPTY:
+    if item["GitLab"] != EMPTY and (services is None or "gitlab" in services):
         try:
             url = LINK_RE.fullmatch(item["GitLab"]).group(2)
             project = config["gitlab"]["project"]
@@ -455,9 +474,20 @@ def sync_state(results: list[dict[str, str]]) -> str:
 
 
 def journal(root: Path, item_id: str, event: str, results: list[dict[str, str]]) -> None:
-    stamp = now().replace(":", "").replace("-", "")
-    path = root / "roadmap" / "journal" / f"{stamp}-{item_id}-{event}.json"
-    atomic_write(path, json.dumps({"timestamp": now(), "item": item_id, "event": event, "results": results}, indent=2) + "\n")
+    timestamp = now()
+    stamp = timestamp.replace(":", "").replace("-", "")
+    operation_id = uuid.uuid4().hex[:16]
+    path = root / "roadmap" / "journal" / f"{stamp}-{item_id}-{event}-{operation_id}.json"
+    record = {"operation_id": operation_id, "timestamp": timestamp, "item": item_id, "event": event, "attempts": 1, "status": sync_state(results), "results": results}
+    chain = root / "roadmap" / "audit.chain.jsonl"
+    if chain.is_file():
+        audit_records = [json.loads(line) for line in chain.read_text(encoding="utf-8").splitlines() if line.strip()]
+        transition = next((entry for entry in reversed(audit_records) if entry.get("item") == item_id), None)
+        if transition:
+            record["transition"] = {key: transition.get(key, "") for key in ("event", "from", "to", "actor", "detail")}
+    atomic_write(path, json.dumps(record, indent=2) + "\n")
+    if any(result.get("status") == "error" for result in results):
+        atomic_write(root / "roadmap" / "outbox" / f"{operation_id}.json", json.dumps(record, indent=2) + "\n")
 
 
 def inspect_remotes(config: dict[str, Any], item: dict[str, str]) -> list[dict[str, Any]]:
@@ -552,7 +582,7 @@ def add_item(args: argparse.Namespace) -> None:
     with workspace_lock(root):
         preflight(root)
         roadmap = Roadmap.load(root / "ROADMAP.md")
-        item_id = next_id(roadmap)
+        item_id = next_id(roadmap, root)
         relative = Path("roadmap") / "items" / f"{item_id}.md"
         item = {"ID": item_id, "P": args.priority, "Status": args.status, "Story": f"[{md_escape(args.title)}]({relative.as_posix()})", "Owner": EMPTY, "Branch": EMPTY, "Home": args.home, "GitHub": EMPTY, "GitLab": EMPTY, "Plan": EMPTY, "Sync": "Local"}
         if args.origin != "native":
@@ -903,6 +933,13 @@ rpi = false
 
 [policy]
 default_route = "Direct"
+archive_after_days = 90
+max_active_items = 150
+
+[notifications]
+enabled = false
+webhook_url_env = "NORTHSTAR_WEBHOOK_URL"
+format = "generic" # generic, slack, or teams
 
 # Map the roadmap's stable teammate name to service usernames.
 # [identities.Maya]

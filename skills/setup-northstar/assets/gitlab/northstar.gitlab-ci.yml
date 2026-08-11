@@ -1,0 +1,47 @@
+.northstar-python:
+  image: python:3.11-slim
+  before_script:
+    - export NORTHSTAR_ENGINE="$(find . -path '*/northstar/scripts/northstar.py' -print -quit)"
+    - export NORTHSTAR_ADMIN="$(find . -path '*/northstar/scripts/northstar_admin.py' -print -quit)"
+    - test -n "$NORTHSTAR_ENGINE" && test -n "$NORTHSTAR_ADMIN"
+
+northstar-policy:
+  extends: .northstar-python
+  rules:
+    - changes:
+        - ROADMAP.md
+        - roadmap/**/*
+  script:
+    - python3 "$NORTHSTAR_ENGINE" validate
+    - python3 "$NORTHSTAR_ADMIN" policy
+    - python3 "$NORTHSTAR_ADMIN" render --check
+
+northstar-claim:
+  extends: .northstar-python
+  when: manual
+  resource_group: "northstar-${NORTHSTAR_ITEM}"
+  variables:
+    NORTHSTAR_EXECUTION_METHOD: Native
+  script:
+    - test -n "$NORTHSTAR_ITEM" && test -n "$NORTHSTAR_OWNER" && test -n "$NORTHSTAR_BRANCH"
+    - test -n "$NORTHSTAR_GITLAB_PUSH_TOKEN"
+    - python3 "$NORTHSTAR_ENGINE" pickup "$NORTHSTAR_ITEM" --owner "$NORTHSTAR_OWNER" --actor "$NORTHSTAR_OWNER" --branch "$NORTHSTAR_BRANCH" --execution-method "$NORTHSTAR_EXECUTION_METHOD" --local-only --apply
+    - python3 "$NORTHSTAR_ENGINE" validate
+    - git config user.name northstar-bot
+    - git config user.email northstar-bot@users.noreply.gitlab.com
+    - git add -- ROADMAP.md roadmap/items roadmap/audit.md roadmap/audit.chain.jsonl
+    - git commit -m "northstar: claim $NORTHSTAR_ITEM for $NORTHSTAR_OWNER"
+    - git push "https://oauth2:${NORTHSTAR_GITLAB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+
+northstar-reconcile:
+  extends: .northstar-python
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - when: manual
+  script:
+    - |
+      retry_status=0
+      reconcile_status=0
+      python3 "$NORTHSTAR_ADMIN" retry all || retry_status=$?
+      python3 "$NORTHSTAR_ADMIN" reconcile-all --strategy report || reconcile_status=$?
+      if [ "$retry_status" -ne 0 ] || [ "$reconcile_status" -ne 0 ]; then exit 1; fi

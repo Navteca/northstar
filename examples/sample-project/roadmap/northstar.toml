@@ -18,6 +18,13 @@ rpi = true
 
 [policy]
 default_route = "Direct"
+archive_after_days = 90
+max_active_items = 150
+
+[notifications]
+enabled = false
+webhook_url_env = "NORTHSTAR_WEBHOOK_URL"
+format = "generic"
 
 [identities.Maya]
 github = "maya-gh"

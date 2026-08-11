@@ -1,0 +1,36 @@
+name: Northstar policy
+
+on:
+  pull_request:
+    paths:
+      - ROADMAP.md
+      - roadmap/**
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate contract and transition
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          ENGINE="$(find . -path '*/northstar/scripts/northstar.py' -print -quit)"
+          ADMIN="$(find . -path '*/northstar/scripts/northstar_admin.py' -print -quit)"
+          test -n "$ENGINE" && test -n "$ADMIN"
+          python3 "$ENGINE" validate
+          if git cat-file -e "$BASE_SHA:ROADMAP.md" 2>/dev/null; then
+            git show "$BASE_SHA:ROADMAP.md" > /tmp/northstar-base-roadmap.md
+            python3 "$ADMIN" policy --base /tmp/northstar-base-roadmap.md
+          else
+            python3 "$ADMIN" policy
+          fi
+          python3 "$ADMIN" render --check
