@@ -48,6 +48,8 @@ For a feature that needs a durable specification, the user says:
 
 Northstar records `Plan kind: Spec Kit`, requires the specification link before the item can become `Ready`, and then returns ownership to the normal implementation workflow. Wayfinder and Spec Kit can be used for different items in the same roadmap.
 
+If the repository uses [cc-rpi](https://github.com/juan294/cc-rpi), the teammate can additionally choose `Execution method: RPI`. cc-rpi runs Research → Plan → Implement → Validate; Northstar keeps the item locked, records the branch and plan, and updates the roadmap after each meaningful phase and at closeout. RPI is execution support, not a second roadmap.
+
 ## 6. Hand off with an audit trail
 
 The user says:

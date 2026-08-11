@@ -21,6 +21,7 @@ roadmap/journal/*.json             # per-operation synchronization results
 - `Home` is the single execution authority: `github`, `gitlab`, or `local`.
 - GitHub and GitLab links may coexist. They are visibility and synchronization endpoints, not competing authorities.
 - `Plan` is one canonical issue, brief, Spec Kit specification, or Wayfinder map. Each brief records `Plan kind: Direct`, `Wayfinder`, or `Spec Kit`; non-direct routes require a plan before active pickup.
+- `Execution method` is orthogonal to planning: `Native` or `RPI` (cc-rpi). RPI may execute a Direct, Wayfinder, or Spec Kit item; it never replaces Northstar's ownership and audit gates.
 - Full story, criteria, dependencies, optional expected completion date, origin, durable context, and delivery evidence live in the brief.
 
 ## Lifecycle gates

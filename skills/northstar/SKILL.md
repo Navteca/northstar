@@ -44,6 +44,7 @@ Users speak naturally. Operate the bundled engine internally and show plain-lang
 - If the work is already clear, move directly to `In Progress`; Wayfinder is not required.
 - If the work is large or foggy, offer Wayfinder. Create its map only on `Home`, write its URL to `Plan`, and use `Planning` until the map clears. Wayfinder then writes durable context back and returns the item to `Ready`; it never marks delivery `Done`.
 - If the feature needs formal requirements, acceptance boundaries, or multi-step design, offer Spec Kit. Link the approved specification in `Plan`, then return the item to `Ready` for implementation.
+- If the repository uses cc-rpi, select `Execution method: RPI` at pickup. Let cc-rpi run Research → Plan → Implement → Validate, while Northstar retains the owner lock, target branch, plan link, handoff/audit record, and mandatory roadmap update after each meaningful phase and at closeout. RPI is an execution method, not another `Plan kind`.
 - The canonical lock is effective after the roadmap change reaches the shared default branch. Re-read it before work starts.
 - Handoffs preserve the item and plan, require a reason, and record previous owner, new owner, actor, and timestamp. Maintainer overrides must be explicit.
 

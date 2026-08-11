@@ -105,6 +105,14 @@ class NorthstarTests(unittest.TestCase):
         self.assertIn("- Plan kind: Spec Kit", brief)
         self.assertEqual(northstar.validate(self.root), [])
 
+    def test_rpi_execution_method_is_recorded_separately_from_plan_kind(self):
+        self.add_ready()
+        self.pickup(execution_method="RPI")
+        brief = (self.root / "roadmap" / "items" / "RM-001.md").read_text()
+        self.assertIn("- Plan kind: Direct", brief)
+        self.assertIn("- Execution method: RPI", brief)
+        self.assertEqual(northstar.validate(self.root), [])
+
     def test_invalid_plan_kind_is_rejected(self):
         self.add_ready()
         brief = self.root / "roadmap" / "items" / "RM-001.md"

@@ -22,6 +22,7 @@ STATUSES = {"Candidate", "Planned", "Planning", "Ready", "In Progress", "Blocked
 SYNC_STATES = {"Local", "Synced", "Drift", "Partial", "Error"}
 PRIORITIES = {"P0", "P1", "P2", "P3"}
 PLAN_KINDS = {"Direct", "Wayfinder", "Spec Kit"}
+EXECUTION_METHODS = {"Native", "RPI"}
 HOME_TRACKERS = {"github", "gitlab", "local"}
 EMPTY = "—"
 ID_RE = re.compile(r"RM-(\d{3,})$")
@@ -231,6 +232,9 @@ def validate(root: Path) -> list[str]:
             errors.append(f"{item_id}: Plan kind must be Direct, Wayfinder, or Spec Kit")
         if item["Status"] in {"Planning", "Ready", "In Progress", "Blocked"} and plan_kind != "Direct" and item["Plan"] == EMPTY:
             errors.append(f"{item_id}: {plan_kind} route requires Plan before active work")
+        execution_method = field(text, "Execution method") or "Native"
+        if execution_method not in EXECUTION_METHODS:
+            errors.append(f"{item_id}: Execution method must be Native or RPI")
         if item["Status"] == "Done":
             if any(value == " " for value in criteria):
                 errors.append(f"{item_id}: Done requires all acceptance criteria checked")
@@ -256,7 +260,7 @@ def next_id(roadmap: Roadmap) -> str:
     return f"RM-{max(numbers, default=0) + 1:03d}"
 
 
-def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str, home: str, plan_kind: str = "Direct") -> str:
+def new_brief(item_id: str, title: str, priority: str, story: str, criteria: list[str], origin: str, origin_url: str, home: str, plan_kind: str = "Direct", execution_method: str = "Native") -> str:
     checks = "\n".join(f"- [ ] {value.strip()}" for value in criteria)
     return f"""# {item_id} — {title}
 
@@ -285,6 +289,7 @@ def new_brief(item_id: str, title: str, priority: str, story: str, criteria: lis
 - GitHub: {EMPTY}
 - GitLab: {EMPTY}
 - Plan kind: {plan_kind}
+- Execution method: {execution_method}
 - Plan: {EMPTY}
 - Context: Pending
 
@@ -559,7 +564,7 @@ def add_item(args: argparse.Namespace) -> None:
             raise NorthstarError("GitHub home requires a linked GitHub issue")
         if args.local_only and args.home == "gitlab" and item["GitLab"] == EMPTY:
             raise NorthstarError("GitLab home requires a linked GitLab issue")
-        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url, args.home, getattr(args, "plan_kind", "Direct"))
+        brief = new_brief(item_id, args.title, args.priority, args.story, args.acceptance, args.origin, args.origin_url, args.home, getattr(args, "plan_kind", "Direct"), getattr(args, "execution_method", "Native"))
         atomic_write(root / relative, brief)
         config = load_config(root)
         results = [] if args.local_only else create_remotes(config, item, brief)
@@ -580,7 +585,7 @@ def add_item(args: argparse.Namespace) -> None:
 def pickup_item(args: argparse.Namespace) -> None:
     root = args.root.resolve()
     if not args.apply:
-        print(json.dumps({"action": "pickup", "item": args.item, "owner": args.owner, "branch": args.branch, "home": args.home, "planning": args.planning, "plan": args.plan}, indent=2))
+        print(json.dumps({"action": "pickup", "item": args.item, "owner": args.owner, "branch": args.branch, "home": args.home, "planning": args.planning, "plan": args.plan, "execution_method": getattr(args, "execution_method", "Native")}, indent=2))
         return
     with workspace_lock(root):
         preflight(root)
@@ -594,7 +599,9 @@ def pickup_item(args: argparse.Namespace) -> None:
         if home == EMPTY:
             raise NorthstarError("Pick-up requires a home tracker")
         requested_plan_kind = getattr(args, "plan_kind", "")
-        plan_kind = requested_plan_kind or field(brief_path(root, item).read_text(encoding="utf-8"), "Plan kind")
+        path = brief_path(root, item)
+        brief = path.read_text(encoding="utf-8")
+        plan_kind = requested_plan_kind or field(brief, "Plan kind")
         if args.planning and not requested_plan_kind:
             plan_kind = "Wayfinder"
         if args.planning and not args.plan:
@@ -607,10 +614,11 @@ def pickup_item(args: argparse.Namespace) -> None:
             raise NorthstarError("GitLab home requires a linked GitLab issue")
         status = "Planning" if args.planning else "In Progress"
         plan = args.plan or item["Plan"]
+        execution_method = getattr(args, "execution_method", "") or field(brief, "Execution method") or "Native"
         item.update({"Status": status, "Owner": args.owner, "Branch": args.branch, "Home": home, "Plan": plan, "Sync": "Local"})
-        path = brief_path(root, item)
-        brief = path.read_text(encoding="utf-8")
-        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Home", home), ("Plan kind", plan_kind), ("Plan", plan)):
+        if "- Execution method:" not in brief:
+            brief = brief.replace("- Plan kind:", "- Execution method: Native\n- Plan kind:", 1)
+        for name, value in (("Owner", args.owner), ("Branch", args.branch), ("Home", home), ("Plan kind", plan_kind), ("Execution method", execution_method), ("Plan", plan)):
             brief = replace_field(brief, name, value)
         brief = append_history(brief, "Picked up", args.actor, f"Owner {args.owner}; branch {args.branch}; home {home}; status {status}; plan {plan}")
         atomic_write(path, brief)
@@ -753,6 +761,11 @@ def doctor(root: Path) -> int:
             report[executable] = {"available": process.returncode == 0, "version": process.stdout.splitlines()[0] if process.stdout else ""}
         except FileNotFoundError:
             report[executable] = {"available": False}
+    agents = root / "AGENTS.md"
+    report["cc_rpi"] = {
+        "available": (root / ".claude" / "commands" / "bootstrap").is_file()
+        or (agents.is_file() and "cc-rpi" in agents.read_text(encoding="utf-8", errors="ignore")),
+    }
     print(json.dumps(report, indent=2))
     return 0
 
@@ -775,6 +788,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--origin-url", default="")
     add.add_argument("--home", choices=sorted(HOME_TRACKERS), default="local")
     add.add_argument("--plan-kind", choices=sorted(PLAN_KINDS), default="Direct")
+    add.add_argument("--execution-method", choices=sorted(EXECUTION_METHODS), default="Native")
     add.add_argument("--actor", default="northstar")
     add.add_argument("--local-only", action="store_true")
     add.add_argument("--apply", action="store_true")
@@ -786,6 +800,7 @@ def build_parser() -> argparse.ArgumentParser:
         pickup.add_argument("--home", choices=sorted(HOME_TRACKERS))
         pickup.add_argument("--plan", default="")
         pickup.add_argument("--plan-kind", choices=sorted(PLAN_KINDS), default="")
+        pickup.add_argument("--execution-method", choices=sorted(EXECUTION_METHODS), default="")
         pickup.add_argument("--planning", action="store_true")
         pickup.add_argument("--actor", required=True)
         pickup.add_argument("--local-only", action="store_true")
@@ -884,6 +899,7 @@ profile = "core"
 wayfinder = false
 speckit = false
 graphify = false
+rpi = false
 
 [policy]
 default_route = "Direct"

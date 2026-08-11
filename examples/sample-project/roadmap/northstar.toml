@@ -14,6 +14,7 @@ profile = "Full"
 wayfinder = true
 speckit = true
 graphify = true
+rpi = true
 
 [policy]
 default_route = "Direct"

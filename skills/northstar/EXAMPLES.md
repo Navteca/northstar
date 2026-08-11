@@ -39,7 +39,8 @@ python3 skills/northstar/scripts/northstar.py link-plan RM-025 \
 
 python3 skills/northstar/scripts/northstar.py pickup RM-026 \
   --owner Iker --actor Iker --branch feat/rm-026-billing \
-  --planning --plan-kind "Spec Kit" --plan docs/specs/rm-026-billing.md
+  --planning --plan-kind "Spec Kit" --execution-method RPI \
+  --plan docs/specs/rm-026-billing.md
 
 python3 skills/northstar/scripts/northstar.py handoff RM-024 \
   --actor Maya --to Iker --reason "Pairing ownership transferred"
