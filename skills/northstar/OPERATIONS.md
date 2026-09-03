@@ -1,46 +1,49 @@
 # Northstar operations
 
-These commands are for assistants, CI, and troubleshooting. Users normally speak in natural language.
-
-## Reliability commands
+Commands for assistants, CI, and troubleshooting. In a set-up repository the scripts live under `roadmap/bin/`.
 
 ```sh
-python3 skills/northstar/scripts/northstar_admin.py policy
-python3 skills/northstar/scripts/northstar_admin.py retry all
-python3 skills/northstar/scripts/northstar_admin.py reconcile-all --strategy report
-python3 skills/northstar/scripts/northstar_admin.py compatibility
-python3 skills/northstar/scripts/northstar_admin.py render
-python3 skills/northstar/scripts/northstar_admin.py render --check
-python3 skills/northstar/scripts/northstar_admin.py archive --apply
-python3 skills/northstar/scripts/northstar_admin.py notify --dry-run
+python3 roadmap/bin/northstar_admin.py policy [--base <previous ROADMAP.md>]
+python3 roadmap/bin/northstar_admin.py retry
+python3 roadmap/bin/northstar_admin.py reconcile-all --strategy report|canonical|ignore
+python3 roadmap/bin/northstar_admin.py archive [--apply]
+python3 roadmap/bin/northstar_admin.py render [--check]
+python3 roadmap/bin/northstar_admin.py compatibility
+python3 roadmap/bin/northstar_admin.py notify [--dry-run]
 ```
 
-## Durable synchronization
+## Workflow templates
 
-Every synchronization attempt writes a journal record. Failed destinations also create a durable operation under `roadmap/outbox/`. `retry` replays only failed services and includes the operation ID in remote notes. Keep `roadmap/journal/` and `roadmap/outbox/` in Git; ignore only `roadmap/.northstar.lock`.
+Installed by `setup-northstar` from `assets/github/`, each with approval. All reference `roadmap/bin/`, so the engine must be vendored first.
 
-`reconcile-all --strategy report` is read-only and exits nonzero when it detects drift. `canonical` restores roadmap state through the normal tracker adapters. `ignore` records visible drift without selecting a remote winner.
+| Template | Trigger | Needs |
+|---|---|---|
+| `northstar-policy.yml` | pull requests touching the roadmap | nothing; read-only |
+| `northstar-claim.yml` | manual dispatch by the claimant | `contents: write`; `NORTHSTAR_PUSH_TOKEN` if the default branch is protected |
+| `northstar-reconcile.yml` | daily schedule | `issues: read` |
+| `northstar-maintenance.yml` | weekly schedule | `contents: write`, same token note |
+| `northstar-notify.yml` | every 15 minutes | `NORTHSTAR_WEBHOOK_URL` secret |
 
-## Server-side claims
+## Policy
 
-Install exactly one claim workflow on the configured `Home` service. GitHub uses a concurrency group per `RM-###`; GitLab uses a `resource_group`. The workflow re-reads the default branch, performs pickup, validates, commits, and pushes. Do not enable independent claim authorities on both services.
+`policy` validates the contract, verifies the audit hash chain, enforces the active-item limit from `[policy].max_active_items`, and with `--base` checks that every status change is a legal transition, that removed rows exist in an archive, and that owner changes have a handoff history event.
 
-Templates live under `setup-northstar/assets/github/` and `setup-northstar/assets/gitlab/`.
+## Claims
 
-## Policy and generated views
+The claim workflow re-reads the default branch, runs `pickup --owner-login "${{ github.actor }}" --local-only`, validates, commits the roadmap files, and pushes. A GitHub `concurrency` group per `RM-###` serializes competing claims. Because the owner is resolved from the dispatching actor through `[identities]`, nobody can claim on another person's behalf.
 
-`policy --base <previous-roadmap>` checks the current contract, audit chain, legal lifecycle transitions, removal through archives, and audited owner changes. `render` produces owner/status/priority views and `roadmap/dashboard.html`; these are projections and must never be edited manually.
+## Retry and reconcile
 
-`archive` uses `[policy].archive_after_days`, defaults to `Done`, `Deferred`, and `Retired`, preserves item briefs, and prevents ID reuse. The active item limit comes from `[policy].max_active_items`.
+Every remote attempt writes `roadmap/journal/<timestamp>-<item>-<event>-<op>.json`. When the attempt fails the row's `Sync` is `Error`; `retry` replays the last journaled event for each such row and is safe to repeat, because issue creation searches by ID first and comments carry the operation ID.
 
-## Audit and notifications
+`reconcile-all --strategy report` is read-only and exits nonzero on drift. `canonical` re-pushes roadmap state to each drifting issue. `ignore` marks the rows `Drift` without touching GitHub.
 
-Each lifecycle event appends a SHA-256-linked record to `roadmap/audit.chain.jsonl`. Protected branches and signed commits remain the trust anchor; the chain exposes accidental or unauthorized rewriting within the file.
+## Archive, views, notifications
 
-`notify` reads unsent chain events and posts through the webhook URL named by `[notifications].webhook_url_env`. Formats are `generic`, `slack`, and `teams`. The committed `.notification-cursor` prevents duplicate delivery across ephemeral CI runners.
+`archive` moves rows in `Done`, `Deferred`, or `Retired` whose last history entry is older than `[policy].archive_after_days` into `roadmap/archive/<year>.md`. Briefs stay in place and IDs are never reused. `render` regenerates `roadmap/views/` and `roadmap/dashboard.html`; `render --check` fails when they are stale.
 
-## Live contracts and compatibility
+`notify` posts unsent audit-chain events to the webhook named by `[notifications].webhook_url_env` in `generic`, `slack`, or `teams` format, and advances the committed cursor so ephemeral runners do not resend.
 
-The opt-in live test requires `NORTHSTAR_LIVE_CONTRACTS=1` plus dedicated sandbox project variables. It creates, verifies, comments on, and closes temporary issues. Never point it at a production tracker.
+## Live contract
 
-`COMPATIBILITY.toml` lists required CLI capabilities. `compatibility` reports missing companions selected in `roadmap/northstar.toml`; version pinning should be added only when an upstream incompatibility is known.
+This repository's `live-contracts.yml` runs `tests/live_tracker_contract.py` against a dedicated sandbox when `NORTHSTAR_GITHUB_TOKEN` and `NORTHSTAR_GITHUB_SANDBOX` are configured. It creates and closes one temporary issue. Never point it at a production repository.

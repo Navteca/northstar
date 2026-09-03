@@ -1,4 +1,4 @@
-name: Live tracker contracts
+name: Live tracker contract
 
 on:
   workflow_dispatch:
@@ -7,27 +7,19 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  contracts:
+  contract:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.NORTHSTAR_GITHUB_TOKEN }}
-      GITLAB_TOKEN: ${{ secrets.NORTHSTAR_GITLAB_TOKEN }}
       NORTHSTAR_GITHUB_SANDBOX: ${{ vars.NORTHSTAR_GITHUB_SANDBOX }}
-      NORTHSTAR_GITLAB_SANDBOX: ${{ vars.NORTHSTAR_GITLAB_SANDBOX }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install GitLab CLI when configured
-        if: ${{ env.NORTHSTAR_GITLAB_SANDBOX != '' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes glab
-      - name: Run contracts when sandbox credentials exist
+      - name: Run the contract when a sandbox is configured
         env:
-          NORTHSTAR_LIVE_CONTRACTS: ${{ (env.GH_TOKEN != '' || env.GITLAB_TOKEN != '') && '1' || '0' }}
+          NORTHSTAR_LIVE_CONTRACTS: ${{ env.GH_TOKEN != '' && env.NORTHSTAR_GITHUB_SANDBOX != '' && '1' || '0' }}
         run: python3 skills/northstar/tests/live_tracker_contract.py

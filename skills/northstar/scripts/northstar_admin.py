@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Operational reliability commands for Northstar repositories."""
+"""Operational commands for Northstar repositories: policy, retry, reconcile, archive, render, compatibility, notify."""
 from __future__ import annotations
 
 import argparse
@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+import uuid
 from pathlib import Path
 
 ENGINE_PATH = Path(__file__).with_name("northstar.py")
@@ -23,17 +24,8 @@ ns = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = ns
 SPEC.loader.exec_module(ns)
 
-ALLOWED_TRANSITIONS = {
-    "Candidate": {"Candidate", "Planned", "Deferred", "Retired"},
-    "Planned": {"Planned", "Ready", "Deferred", "Retired"},
-    "Ready": {"Ready", "Planning", "In Progress", "Deferred", "Retired"},
-    "Planning": {"Planning", "Ready", "Blocked"},
-    "In Progress": {"In Progress", "Blocked", "Done"},
-    "Blocked": {"Blocked", "Planning", "In Progress", "Ready"},
-    "Done": {"Done"},
-    "Deferred": {"Deferred", "Planned", "Retired"},
-    "Retired": {"Retired"},
-}
+# Companion executables and the config key that makes each one required.
+COMPANIONS = {"gh": ("github", "enabled"), "graphify": ("companions", "graphify"), "specify": ("companions", "speckit")}
 
 
 def verify_audit(root: Path) -> list[str]:
@@ -66,21 +58,21 @@ def policy(root: Path, base: Path | None) -> int:
     if len(active.items) > maximum:
         errors.append(f"ROADMAP.md has {len(active.items)} active items; policy maximum is {maximum}; archive completed or inactive work")
     if base and base.is_file():
-        current = active
         previous = ns.Roadmap.load(base)
-        current_by_id = {item["ID"]: item for item in current.items}
-        archive_text = "\n".join(path.read_text(encoding="utf-8") for path in (root / "roadmap" / "archive").glob("*.md")) if (root / "roadmap" / "archive").is_dir() else ""
+        current_by_id = {item["ID"]: item for item in active.items}
+        archive_dir = root / "roadmap" / "archive"
+        archive_text = "\n".join(path.read_text(encoding="utf-8") for path in archive_dir.glob("*.md")) if archive_dir.is_dir() else ""
         for old in previous.items:
             new = current_by_id.get(old["ID"])
             if not new:
                 if old["ID"] not in archive_text:
                     errors.append(f"{old['ID']}: removed without an archive entry")
                 continue
-            if new["Status"] not in ALLOWED_TRANSITIONS.get(old["Status"], set()):
+            if new["Status"] not in ns.TRANSITIONS.get(old["Status"], set()):
                 errors.append(f"{old['ID']}: illegal transition {old['Status']} → {new['Status']}")
             if old["Owner"] != new["Owner"] and old["Owner"] != ns.EMPTY:
                 brief = ns.brief_path(root, new).read_text(encoding="utf-8")
-                if "| Handoff" not in brief and "| Handoff override" not in brief:
+                if "| Handoff" not in brief:
                     errors.append(f"{old['ID']}: owner changed without a handoff history event")
     if errors:
         print("\n".join(f"ERROR: {error}" for error in errors), file=sys.stderr)
@@ -89,42 +81,31 @@ def policy(root: Path, base: Path | None) -> int:
     return 0
 
 
-def retry(root: Path, operation: str) -> int:
-    outbox = root / "roadmap" / "outbox"
-    paths = [outbox / f"{operation}.json"] if operation != "all" else sorted(outbox.glob("*.json"))
+def retry(root: Path) -> int:
+    """Replay the last journaled event for every row whose Sync is Error."""
     roadmap = ns.Roadmap.load(root / "ROADMAP.md")
     config = ns.load_config(root)
     failures = 0
-    for path in paths:
-        if not path.is_file():
-            failures += 1
-            print(f"ERROR: missing outbox operation {path}", file=sys.stderr)
+    for item in roadmap.items:
+        if item["Sync"] != "Error":
             continue
-        record = json.loads(path.read_text(encoding="utf-8"))
-        item = roadmap.find(record["item"])
-        failed = {result["service"] for result in record.get("results", []) if result.get("status") == "error"}
-        event = record["event"]
-        if event == "created":
-            results = ns.create_remotes(config, item, ns.brief_path(root, item).read_text(encoding="utf-8"), failed)
-        else:
-            mapped = {"picked-up": "claimed", "plan-linked": "updated", "reconcile-canonical": "updated"}.get(event, event)
-            previous = record.get("transition", {}).get("from", "") if event == "handoff" else ""
-            results = ns.update_remotes(config, item, mapped, item["Owner"], previous=previous, detail=f"retry {record['operation_id']}", services=failed, operation_id=record["operation_id"])
-        returned = {result.get("service") for result in results}
-        old_by_service = {result.get("service"): result for result in record.get("results", [])}
-        results.extend(old_by_service[service] for service in failed - returned if service in old_by_service)
-        preserved = [result for result in record.get("results", []) if result.get("service") not in failed]
-        record["results"] = preserved + results
-        record["attempts"] = int(record.get("attempts", 1)) + 1
-        record["status"] = ns.sync_state(record["results"])
+        record = ns.latest_journal(root, item["ID"]) or {}
+        remote_event = record.get("remote_event")
+        previous = ""
+        if remote_event == "handoff":
+            history = ns.section(ns.brief_path(root, item).read_text(encoding="utf-8"), "History")
+            match = re.findall(r"\| Handoff(?: override)? \| [^|]+ \| (\S+) to ", history)
+            previous = match[-1] if match else ""
+        operation_id = record.get("operation_id") or uuid.uuid4().hex[:16]
+        brief = ns.brief_path(root, item).read_text(encoding="utf-8")
+        result = ns.sync(config, item, brief, remote_event, item["Owner"], previous, f"retry of {record.get('event', 'sync')}", operation_id)
         old_sync = item["Sync"]
-        item["Sync"] = record["status"]
-        if record["status"] in {"Synced", "Local"}:
-            path.unlink()
-        else:
-            ns.atomic_write(path, json.dumps(record, indent=2) + "\n")
-            failures += 1
-        ns.audit(root, item["ID"], "Sync retry", old_sync, item["Sync"], "northstar-retry", item["Plan"], record["operation_id"])
+        item["Sync"] = ns.sync_state(result)
+        if item["Issue"] != ns.EMPTY:
+            ns.atomic_write(ns.brief_path(root, item), ns.replace_field(brief, "Issue", ns.issue_url(item)))
+        ns.journal(root, item["ID"], "retry", remote_event, result, operation_id)
+        ns.audit(root, item["ID"], "Sync retry", old_sync, item["Sync"], "northstar-retry", item["Plan"], operation_id)
+        failures += item["Sync"] == "Error"
     roadmap.save()
     return 1 if failures else 0
 
@@ -135,10 +116,9 @@ def reconcile_all(root: Path, strategy: str, actor: str) -> int:
     config = ns.load_config(root)
     reports = []
     for item in list(roadmap.items):
-        if item["GitHub"] == ns.EMPTY and item["GitLab"] == ns.EMPTY:
+        if item["Issue"] == ns.EMPTY:
             continue
-        snapshots = ns.inspect_remotes(config, item)
-        report = ns.reconciliation_report(config, item, snapshots)
+        report = ns.reconciliation_report(config, item, ns.inspect_issue(item))
         reports.append(report)
         if strategy != "report" and report["differences"]:
             ns.reconcile_item(argparse.Namespace(root=root, item=item["ID"], strategy=strategy, actor=actor, reason="fleet reconciliation", apply=True))
@@ -164,13 +144,10 @@ def archive(root: Path, before: dt.datetime, statuses: set[str], apply: bool) ->
         return 0
     grouped: dict[str, list[dict[str, str]]] = {}
     for item in selected:
-        stamp = item_timestamp(root, item)
-        grouped.setdefault(str(stamp.year), []).append(item)
+        grouped.setdefault(str(item_timestamp(root, item).year), []).append(item)
     for year, items in grouped.items():
         path = root / "roadmap" / "archive" / f"{year}.md"
-        existing = []
-        if path.is_file():
-            existing = ns.Roadmap.load(path).items
+        existing = ns.Roadmap.load(path).items if path.is_file() else []
         archived = existing + [dict(item) for item in items]
         for item in archived:
             match = ns.LINK_RE.fullmatch(item["Story"])
@@ -189,7 +166,7 @@ def archive(root: Path, before: dt.datetime, statuses: set[str], apply: bool) ->
 
 def render(root: Path, check: bool) -> int:
     roadmap = ns.Roadmap.load(root / "ROADMAP.md")
-    groups = {"owner": {}, "status": {}, "priority": {}}
+    groups: dict[str, dict[str, list[dict[str, str]]]] = {"owner": {}, "status": {}, "priority": {}}
     for item in roadmap.items:
         for key, column in (("owner", "Owner"), ("status", "Status"), ("priority", "P")):
             groups[key].setdefault(item[column], []).append(item)
@@ -206,12 +183,14 @@ def render(root: Path, check: bool) -> int:
                 lines.append(ns.render_row([row[column] for column in ns.HEADER]))
             lines.append("")
         outputs[root / "roadmap" / "views" / f"by-{key}.md"] = "\n".join(lines).rstrip() + "\n"
+
     def cell(column: str, value: str, item_id: str) -> str:
         match = ns.LINK_RE.fullmatch(value)
         if not match:
             return html.escape(value)
         href = f"items/{item_id}.md" if column == "Story" else match.group(2)
         return f"<a href='{html.escape(href, quote=True)}'>{html.escape(match.group(1))}</a>"
+
     rows = "".join("<tr>" + "".join(f"<td>{cell(column, item[column], item['ID'])}</td>" for column in ns.HEADER) + "</tr>" for item in roadmap.items)
     dashboard = "<!doctype html><meta charset='utf-8'><title>Northstar roadmap</title><style>body{font:14px system-ui;margin:2rem;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd3df;padding:.45rem;text-align:left}th{background:#eef2f7;position:sticky;top:0}tr:nth-child(even){background:#f8fafc}</style><h1>Northstar roadmap</h1><p>Generated from ROADMAP.md. Do not edit manually.</p><table><thead><tr>" + "".join(f"<th>{html.escape(column)}</th>" for column in ns.HEADER) + "</tr></thead><tbody>" + rows + "</tbody></table>"
     outputs[root / "roadmap" / "dashboard.html"] = dashboard + "\n"
@@ -227,24 +206,20 @@ def render(root: Path, check: bool) -> int:
 
 
 def compatibility(root: Path) -> int:
-    manifest = Path(__file__).parents[1] / "COMPATIBILITY.toml"
-    with manifest.open("rb") as stream:
-        data = ns.tomllib.load(stream)
-    report = {}
     config = ns.load_config(root)
-    for name, spec in data["tools"].items():
-        command_name = str(spec.get("command", name))
-        available = shutil.which(command_name) is not None
+    report = {}
+    for name, (table, key) in COMPANIONS.items():
+        available = shutil.which(name) is not None
         version = ""
         if available:
             try:
-                process = subprocess.run([command_name, "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-                version = (process.stdout or process.stderr).splitlines()[0] if process.stdout or process.stderr else ""
+                process = subprocess.run([name, "--version"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                output = process.stdout or process.stderr
+                version = output.splitlines()[0] if output else ""
                 available = process.returncode == 0
             except OSError:
                 available = False
-        required = bool(config.get(name, {}).get("enabled", False)) if name in {"github", "gitlab"} else bool(config.get("companions", {}).get(name, False))
-        report[name] = {"available": available, "version": version, "required": required}
+        report[name] = {"available": available, "version": version, "required": bool(config.get(table, {}).get(key, False))}
     report["rpi"] = {"available": (root / ".claude" / "commands" / "bootstrap").is_file() or (root / "AGENTS.md").is_file(), "required": bool(config.get("companions", {}).get("rpi", False))}
     print(json.dumps(report, indent=2))
     return 1 if any(value["required"] and not value["available"] for value in report.values()) else 0
@@ -285,13 +260,11 @@ def notify(root: Path, dry_run: bool) -> int:
 
 
 def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(prog="northstar-admin")
+    result = argparse.ArgumentParser(prog="northstar-admin", description=__doc__)
     result.add_argument("--root", type=Path, default=Path.cwd())
     commands = result.add_subparsers(dest="command", required=True)
-    policy_parser = commands.add_parser("policy")
-    policy_parser.add_argument("--base", type=Path)
-    retry_parser = commands.add_parser("retry")
-    retry_parser.add_argument("operation", nargs="?", default="all")
+    commands.add_parser("policy").add_argument("--base", type=Path)
+    commands.add_parser("retry")
     reconcile_parser = commands.add_parser("reconcile-all")
     reconcile_parser.add_argument("--strategy", choices=["report", "canonical", "ignore"], default="report")
     reconcile_parser.add_argument("--actor", default="northstar-ci")
@@ -299,11 +272,9 @@ def parser() -> argparse.ArgumentParser:
     archive_parser.add_argument("--before")
     archive_parser.add_argument("--status", action="append", choices=["Done", "Deferred", "Retired"], default=[])
     archive_parser.add_argument("--apply", action="store_true")
-    render_parser = commands.add_parser("render")
-    render_parser.add_argument("--check", action="store_true")
+    commands.add_parser("render").add_argument("--check", action="store_true")
     commands.add_parser("compatibility")
-    notify_parser = commands.add_parser("notify")
-    notify_parser.add_argument("--dry-run", action="store_true")
+    commands.add_parser("notify").add_argument("--dry-run", action="store_true")
     return result
 
 
@@ -314,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "policy":
             return policy(root, args.base)
         if args.command == "retry":
-            return retry(root, args.operation)
+            return retry(root)
         if args.command == "reconcile-all":
             return reconcile_all(root, args.strategy, args.actor)
         if args.command == "archive":

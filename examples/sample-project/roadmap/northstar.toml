@@ -1,13 +1,9 @@
 version = 1
 
 [github]
-enabled = false
+enabled = false # the sample never contacts GitHub; set true in a real repository
 repository = "acme/product"
 project_title = "Product roadmap"
-
-[gitlab]
-enabled = false
-project = "acme/product"
 
 [companions]
 profile = "Full"
@@ -28,8 +24,9 @@ format = "generic"
 
 [identities.Maya]
 github = "maya-gh"
-gitlab = "maya-gl"
 
 [identities.Iker]
 github = "iker-gh"
-gitlab = "iker-gl"
+
+[identities.Sofia]
+github = "sofia-gh"

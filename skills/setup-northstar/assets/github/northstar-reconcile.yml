@@ -14,23 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      GITLAB_TOKEN: ${{ secrets.NORTHSTAR_GITLAB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install GitLab CLI when GitLab is configured
-        if: ${{ env.GITLAB_TOKEN != '' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes glab
-      - name: Retry failed destinations and report drift
-        run: |
-          ADMIN="$(find . -path '*/northstar/scripts/northstar_admin.py' -print -quit)"
-          test -n "$ADMIN"
-          retry_status=0
-          reconcile_status=0
-          python3 "$ADMIN" retry all || retry_status=$?
-          python3 "$ADMIN" reconcile-all --strategy report || reconcile_status=$?
-          if [ "$retry_status" -ne 0 ] || [ "$reconcile_status" -ne 0 ]; then exit 1; fi
+      - name: Report drift between ROADMAP.md and linked issues
+        run: python3 roadmap/bin/northstar_admin.py reconcile-all --strategy report

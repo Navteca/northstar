@@ -3,28 +3,34 @@
 ## Repository contract
 
 ```text
-ROADMAP.md                         # canonical compact portfolio index
-roadmap/northstar.toml             # safe tracker and identity mapping
-roadmap/audit.md                   # append-only lifecycle and handoff audit
-roadmap/items/RM-001.md            # complete story, context, and evidence
-roadmap/journal/*.json             # per-operation synchronization results
+ROADMAP.md                     canonical compact portfolio table
+roadmap/northstar.toml         GitHub repository, identities, profile, policy (no credentials)
+roadmap/bin/                   vendored engine used by CI (northstar.py, northstar_admin.py)
+roadmap/items/RM-001.md        full user story, plan, execution, and evidence
+roadmap/audit.md               human-readable lifecycle audit
+roadmap/audit.chain.jsonl      SHA-256-linked machine-verifiable audit
+roadmap/journal/*.json         one record per synchronization attempt
+roadmap/archive/*.md           archived rows; briefs stay in place
+roadmap/views/*.md             generated owner/status/priority projections
+roadmap/dashboard.html         generated read-only dashboard
+roadmap/.notification-cursor   webhook delivery cursor
+roadmap/.northstar.lock        working-tree mutation lock (gitignored)
 ```
 
 ## Compact roadmap
 
 ```md
-| ID | P | Status | Story | Owner | Branch | Home | GitHub | GitLab | Plan | Sync |
-|---|---|---|---|---|---|---|---|---|---|---|
-| RM-024 | P1 | Planning | [Team invitations](roadmap/items/RM-024.md) | Maya | feat/rm-024-invitations | github | [#142](https://github.com/acme/app/issues/142) | [#87](https://gitlab.com/acme/app/-/issues/87) | [map](https://github.com/acme/app/issues/155) | Synced |
+| ID | P | Status | Story | Owner | Branch | Issue | Plan | Sync |
+|---|---|---|---|---|---|---|---|---|
+| RM-024 | P1 | Planning | [Team invitations](roadmap/items/RM-024.md) | Maya | feat/rm-024-invitations | [#142](https://github.com/acme/app/issues/142) | [map](https://github.com/acme/app/issues/155) | Synced |
 ```
 
-- `Home` is the single execution authority: `github`, `gitlab`, or `local`.
-- GitHub and GitLab links may coexist. They are visibility and synchronization endpoints, not competing authorities.
-- `Plan` is one canonical issue, brief, Spec Kit specification, or Wayfinder map. Each brief records `Plan kind: Direct`, `Wayfinder`, or `Spec Kit`; non-direct routes require a plan before active pickup.
-- `Execution method` is orthogonal to planning: `Native` or `RPI` (cc-rpi). RPI may execute a Direct, Wayfinder, or Spec Kit item; it never replaces Northstar's ownership and audit gates.
-- Full story, criteria, dependencies, optional expected completion date, origin, durable context, and delivery evidence live in the brief.
+- `Issue` is the one GitHub issue for the item, or `—`. It is created on `add` or first `pickup` when GitHub is enabled, and idempotently: the engine searches for `[RM-###]` in issue titles before creating.
+- `Plan` is one canonical planning artifact. The brief records `Plan kind` (`Direct`, `Wayfinder`, `Spec Kit`) and `Execution method` (`Native`, `RPI`).
+- `Sync` is `Local` (no issue or GitHub disabled), `Synced`, `Error` (roadmap changed, issue update failed; retryable), or `Drift` (remote differs and the team chose to leave it).
+- Story, criteria, dependencies, optional target date, origin, context, and delivery evidence live in the brief.
 
-## Lifecycle gates
+## Lifecycle
 
 ```text
 Candidate → Planned → Ready → In Progress → Done
@@ -33,46 +39,39 @@ Candidate → Planned → Ready → In Progress → Done
           ↘ Deferred / Retired
 ```
 
-- `Ready`: valid story and criteria plus a usable `Home` endpoint.
-- `Planning`: exclusive owner, target branch, `Home`, and one `Plan`; the plan kind identifies whether the route is Wayfinder or Spec Kit.
-- `In Progress`: exclusive owner, target branch, and `Home`. A plan is optional.
-- `Blocked`: retains ownership and context while work cannot proceed.
-- `Done`: all criteria checked, durable context evidence, delivery evidence, roadmap/brief update, and recorded sync result.
-
-## Responsibility boundary
-
-| Concern | Authority |
+| From | To |
 |---|---|
-| Portfolio ordering, story, priority, initiative owner, lifecycle | Northstar |
-| Discovery decisions for one large/foggy item | Wayfinder map on `Home` |
-| Formal feature definition and acceptance boundary | Spec Kit specification linked from `Plan` |
-| Optional Research → Plan → Implement → Validate execution | cc-rpi, recorded as `Execution method: RPI` |
-| Task assignment, commits, reviews, implementation discussion | Home tracker and repository |
-| Optional architecture knowledge graph | Graphify |
-| High-level lifecycle/handoff audit | `roadmap/audit.md` |
-| Detailed technical audit | Git history, PRs/MRs, tracker history, and linked context |
+| Candidate | Planned, Deferred, Retired |
+| Planned | Ready, Deferred, Retired |
+| Ready | Planning, In Progress, Deferred, Retired |
+| Planning | Ready, Blocked |
+| In Progress | Blocked, Done |
+| Blocked | Planning, In Progress, Ready |
+| Deferred | Planned, Retired |
+| Done, Retired | terminal |
 
-Wayfinder is conditional. It consumes one roadmap item and writes back one map/context pointer. Northstar never expands the entire portfolio into a Wayfinder map, and Wayfinder never reprioritizes the portfolio or closes delivery.
+The engine refuses any other move. The `policy` command re-checks the same table between a pull request's base and head so a hand edit cannot bypass it.
 
-## Synchronization transaction
+- `Ready`: valid story and criteria.
+- `Planning`: owner, branch, non-Direct plan kind, and one `Plan`.
+- `In Progress`: owner and branch. A plan is optional.
+- `Blocked`: keeps owner and context.
+- `Done`: every criterion checked, durable context, delivery evidence, branch, and a recorded sync result.
 
-1. Validate the current roadmap and brief.
-2. Preview the intended local and remote changes.
-3. Acquire the local lock and write repository files atomically.
-4. Update every linked service through authenticated sessions.
-5. Save per-service results under `roadmap/journal/`.
-6. Set `Sync` to `Synced`, `Partial`, `Error`, `Drift`, or `Local`; append an audit event.
+## Synchronization
 
-Partial remote success is not rolled back. Reconciliation resumes from the journal and never silently selects a winner.
+1. Validate the roadmap and brief.
+2. Preview the local and remote change.
+3. Take the working-tree lock and write files atomically.
+4. Push one event to the linked issue: assign and comment for pickup and handoff, comment for updates, close with comment for closeout. Comments carry `[northstar:RM-###][op:<id>]` so retries are recognizable.
+5. Write the journal record and set `Sync`.
+
+A failed remote step never rolls back the roadmap. `northstar_admin.py retry` replays the last journaled event for every `Error` row.
 
 ## Concurrent pickup
 
-The engine prevents simultaneous mutations in one working tree. Across clones, the shared default branch is the lock authority. A pickup is not authoritative until its roadmap change lands there. Competing edits touch the same row, making the conflict visible. Only the merged owner may proceed; every assistant must re-read the canonical row before starting.
-
-## GitHub and GitLab
-
-Northstar uses authenticated `gh` and `glab` sessions. It creates/links issues, assigns owners, posts lifecycle notes, closes delivery issues, and may add GitHub issues to a configured GitHub Project. GitLab boards remain views over project issues/work items. The roadmap does not depend on either product's proprietary project schema.
+The lock protects one working tree. Across clones, the shared default branch is the authority: a pickup counts once its roadmap change lands there, and competing edits touch the same row and conflict visibly. The optional claim workflow serializes pickups per item on the server and resolves the claimant from the GitHub actor.
 
 ## Import rule
 
-External work is never silently added. Northstar links the original record, records provenance, creates only approved missing mirrors, and posts a source note that the issue was created outside Northstar and imported so `ROADMAP.md` remains canonical.
+External issues are imported with `add --origin github --origin-url <issue>`. Northstar links the original instead of duplicating it, records provenance in the brief, and comments on the issue that it is now governed by `ROADMAP.md`.

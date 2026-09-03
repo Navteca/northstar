@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Opt-in live contracts for dedicated GitHub/GitLab sandbox projects."""
+"""Opt-in live contract against a dedicated GitHub sandbox repository. Creates, comments on, and closes one temporary issue."""
 from __future__ import annotations
 
 import importlib.util
 import json
 import os
 import sys
-import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -18,7 +17,12 @@ sys.modules[SPEC.name] = ns
 SPEC.loader.exec_module(ns)
 
 
-def github(repo: str, marker: str) -> None:
+def main() -> int:
+    if os.environ.get("NORTHSTAR_LIVE_CONTRACTS") != "1":
+        print("SKIP: set NORTHSTAR_LIVE_CONTRACTS=1 and NORTHSTAR_GITHUB_SANDBOX=owner/repo for a dedicated sandbox")
+        return 0
+    repo = os.environ["NORTHSTAR_GITHUB_SANDBOX"]
+    marker = f"[northstar-contract] {uuid.uuid4()}"
     created = json.loads(ns.command(["gh", "api", "--method", "POST", f"repos/{repo}/issues", "--input", "-"], {"title": marker, "body": "Northstar live contract; safe to close."}))
     url = created["html_url"]
     try:
@@ -28,35 +32,7 @@ def github(repo: str, marker: str) -> None:
         ns.command(["gh", "issue", "comment", url, "--body", f"[northstar-contract:{marker}] update"])
     finally:
         ns.command(["gh", "issue", "close", url, "--comment", f"[northstar-contract:{marker}] cleanup"])
-
-
-def gitlab(project: str, marker: str) -> None:
-    endpoint = f"projects/{urllib.parse.quote(project, safe='')}/issues"
-    created = json.loads(ns.command(["glab", "api", "--method", "POST", endpoint, "--input", "-"], {"title": marker, "description": "Northstar live contract; safe to close."}))
-    iid = str(created["iid"])
-    try:
-        viewed = json.loads(ns.command(["glab", "api", f"{endpoint}/{iid}"]))
-        if viewed["title"] != marker or viewed["state"].lower() not in {"open", "opened"}:
-            raise RuntimeError(f"unexpected GitLab issue state: {viewed}")
-        ns.command(["glab", "issue", "note", iid, "-R", project, "-m", f"[northstar-contract:{marker}] update"])
-    finally:
-        ns.command(["glab", "issue", "close", iid, "-R", project])
-
-
-def main() -> int:
-    if os.environ.get("NORTHSTAR_LIVE_CONTRACTS") != "1":
-        print("SKIP: set NORTHSTAR_LIVE_CONTRACTS=1 for dedicated sandbox projects")
-        return 0
-    marker = f"[northstar-contract] {uuid.uuid4()}"
-    github_repo = os.environ.get("NORTHSTAR_GITHUB_SANDBOX", "")
-    gitlab_project = os.environ.get("NORTHSTAR_GITLAB_SANDBOX", "")
-    if not github_repo and not gitlab_project:
-        raise RuntimeError("set NORTHSTAR_GITHUB_SANDBOX and/or NORTHSTAR_GITLAB_SANDBOX")
-    if github_repo:
-        github(github_repo, marker)
-    if gitlab_project:
-        gitlab(gitlab_project, marker)
-    print("OK: live tracker contracts passed")
+    print("OK: live GitHub contract passed")
     return 0
 
 

@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ADMIN_PATH = Path(__file__).parents[1] / "scripts" / "northstar_admin.py"
 INSTALLER_PATH = Path(__file__).parents[2] / "setup-northstar" / "scripts" / "install_operational_assets.py"
@@ -33,20 +34,14 @@ class NorthstarAdminTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         ns.init_workspace(self.root)
-        ns.add_item(args(
-            root=self.root,
-            title="Team invitations",
-            priority="P1",
-            status="Ready",
-            story="As a workspace admin, I want to invite teammates, so that I can onboard them without support.",
-            acceptance=["Admin can invite an email address"],
-            origin="native",
-            origin_url="",
-            home="local",
-        ))
+        ns.add_item(args(root=self.root, title="Team invitations", priority="P1", status="Ready", story="As a workspace admin, I want to invite teammates, so that I can onboard them without support.", acceptance=["Admin can invite an email address"], origin="native", origin_url=""))
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def enable_github(self):
+        config = self.root / "roadmap" / "northstar.toml"
+        config.write_text(config.read_text().replace("enabled = false\nrepository", "enabled = true\nrepository") + '\n[identities.Maya]\ngithub = "maya-gh"\n')
 
     def test_audit_chain_is_tamper_evident(self):
         self.assertEqual(admin.verify_audit(self.root), [])
@@ -56,13 +51,43 @@ class NorthstarAdminTests(unittest.TestCase):
         ns.atomic_write(path, json.dumps(record) + "\n")
         self.assertTrue(any("record hash mismatch" in error for error in admin.verify_audit(self.root)))
 
-    def test_failed_sync_creates_durable_outbox_operation(self):
-        ns.journal(self.root, "RM-001", "updated", [{"service": "github", "status": "error", "detail": "offline"}])
-        records = list((self.root / "roadmap" / "outbox").glob("*.json"))
-        self.assertEqual(len(records), 1)
-        self.assertEqual(json.loads(records[0].read_text())["status"], "Error")
-        self.assertEqual(admin.retry(self.root, "all"), 1)
-        self.assertTrue(records[0].is_file())
+    def test_failed_sync_is_journaled_and_retry_replays_the_event(self):
+        self.enable_github()
+        calls: list[list[str]] = []
+
+        def failing(command_args, stdin=None):
+            calls.append(command_args)
+            raise ns.NorthstarError("offline")
+
+        with mock.patch.object(ns, "command", failing):
+            ns.pickup_item(args(root=self.root, item="RM-001", owner="Maya", branch="feat/rm-001", plan="", planning=False, local_only=False))
+        item = ns.Roadmap.load(self.root / "ROADMAP.md").find("RM-001")
+        self.assertEqual((item["Status"], item["Sync"]), ("In Progress", "Error"))
+        record = ns.latest_journal(self.root, "RM-001")
+        self.assertEqual((record["event"], record["remote_event"], record["status"]), ("picked-up", "claimed", "Error"))
+
+        def working(command_args, stdin=None):
+            calls.append(command_args)
+            if command_args[:3] == ["gh", "issue", "list"]:
+                return "[]"
+            if command_args[:2] == ["gh", "api"]:
+                return json.dumps({"html_url": "https://github.com/acme/product/issues/7"})
+            return ""
+
+        with mock.patch.object(ns, "command", working):
+            self.assertEqual(admin.retry(self.root), 0)
+        item = ns.Roadmap.load(self.root / "ROADMAP.md").find("RM-001")
+        self.assertEqual((item["Sync"], item["Issue"]), ("Synced", "[#7](https://github.com/acme/product/issues/7)"))
+        self.assertIn("--add-assignee", [arg for call in calls for arg in call])
+        self.assertIn("- Issue: https://github.com/acme/product/issues/7", (self.root / "roadmap" / "items" / "RM-001.md").read_text())
+        self.assertEqual(ns.validate(self.root), [])
+
+    def test_issue_creation_reuses_existing_issue_by_id(self):
+        self.enable_github()
+        item = ns.Roadmap.load(self.root / "ROADMAP.md").find("RM-001")
+        with mock.patch.object(ns, "command", lambda a, stdin=None: json.dumps([{"url": "https://github.com/acme/product/issues/3"}])) as _:
+            ns.ensure_issue(ns.load_config(self.root), item, "")
+        self.assertEqual(item["Issue"], "[#3](https://github.com/acme/product/issues/3)")
 
     def test_render_produces_stable_views_and_dashboard(self):
         self.assertEqual(admin.render(self.root, check=False), 0)
@@ -80,25 +105,29 @@ class NorthstarAdminTests(unittest.TestCase):
             self.assertEqual(admin.policy(self.root, base), 1)
 
     def test_archive_preserves_brief_and_prevents_id_reuse(self):
-        ns.pickup_item(args(root=self.root, item="RM-001", owner="Maya", branch="feat/rm-001", home=None, plan="", planning=False))
+        ns.pickup_item(args(root=self.root, item="RM-001", owner="Maya", branch="feat/rm-001", plan="", planning=False))
         brief = self.root / "roadmap" / "items" / "RM-001.md"
         ns.atomic_write(brief, brief.read_text().replace("- [ ]", "- [x]"))
         ns.close_item(args(root=self.root, item="RM-001", context="Repository: PR #1", evidence="PR #1"))
         future = admin.dt.datetime(2100, 1, 1, tzinfo=admin.dt.timezone.utc)
         self.assertEqual(admin.archive(self.root, future, {"Done"}, apply=True), 0)
         self.assertEqual(ns.Roadmap.load(self.root / "ROADMAP.md").items, [])
-        self.assertTrue((self.root / "roadmap" / "items" / "RM-001.md").is_file())
-        roadmap = ns.Roadmap.load(self.root / "ROADMAP.md")
-        self.assertEqual(ns.next_id(roadmap, self.root), "RM-002")
+        self.assertTrue(brief.is_file())
+        self.assertEqual(ns.next_id(ns.Roadmap.load(self.root / "ROADMAP.md"), self.root), "RM-002")
 
-    def test_operational_asset_installer_previews_then_preserves_existing_files(self):
-        preview = subprocess.run([sys.executable, str(INSTALLER_PATH), "--root", str(self.root), "--service", "github"], text=True, stdout=subprocess.PIPE, check=False)
+    def test_installer_vendors_engine_and_preserves_existing_workflows(self):
+        run = lambda *extra: subprocess.run([sys.executable, str(INSTALLER_PATH), "--root", str(self.root), *extra], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        preview = run()
         self.assertEqual(preview.returncode, 0)
-        self.assertFalse((self.root / ".github" / "workflows").exists())
-        applied = subprocess.run([sys.executable, str(INSTALLER_PATH), "--root", str(self.root), "--service", "github", "--apply"], text=True, stdout=subprocess.PIPE, check=False)
-        self.assertEqual(applied.returncode, 0)
-        conflict = subprocess.run([sys.executable, str(INSTALLER_PATH), "--root", str(self.root), "--service", "github", "--apply"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        self.assertEqual(conflict.returncode, 1)
+        self.assertFalse((self.root / "roadmap" / "bin").exists())
+        self.assertEqual(run("--apply").returncode, 0)
+        self.assertTrue((self.root / "roadmap" / "bin" / "northstar.py").is_file())
+        self.assertTrue((self.root / ".github" / "workflows" / "northstar-policy.yml").is_file())
+        self.assertIn("roadmap/.northstar.lock", (self.root / ".gitignore").read_text())
+        self.assertEqual(run("--apply").returncode, 1)
+        # The vendored engine runs standalone.
+        vendored = subprocess.run([sys.executable, str(self.root / "roadmap" / "bin" / "northstar_admin.py"), "--root", str(self.root), "policy"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        self.assertEqual(vendored.returncode, 0, vendored.stderr)
 
 
 if __name__ == "__main__":
