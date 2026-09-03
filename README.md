@@ -73,6 +73,8 @@ Northstar is complete on its own: `Plan kind: Direct` and any URL in `Plan`. Tea
 - [cc-rpi](https://github.com/juan294/cc-rpi) as an execution method, recorded separately from the planning route.
 - [Graphify](https://github.com/Graphify-Labs/graphify) for durable codebase context at closeout.
 
+Step-by-step runbooks: [new project](docs/runbooks/NEW_PROJECT.md) and [existing project](docs/runbooks/EXISTING_PROJECT.md), for Claude Code and Codex.
+
 Design rationale and limitations: [docs/DESIGN_AND_VALUE.md](docs/DESIGN_AND_VALUE.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
