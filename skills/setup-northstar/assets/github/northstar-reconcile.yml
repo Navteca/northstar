@@ -1,0 +1,23 @@
+name: Northstar reconcile
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Report drift between ROADMAP.md and linked issues
+        run: python3 roadmap/bin/northstar_admin.py reconcile-all --strategy report

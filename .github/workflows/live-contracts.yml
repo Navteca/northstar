@@ -1,0 +1,25 @@
+name: Live tracker contract
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.NORTHSTAR_GITHUB_TOKEN }}
+      NORTHSTAR_GITHUB_SANDBOX: ${{ vars.NORTHSTAR_GITHUB_SANDBOX }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run the contract when a sandbox is configured
+        env:
+          NORTHSTAR_LIVE_CONTRACTS: ${{ env.GH_TOKEN != '' && env.NORTHSTAR_GITHUB_SANDBOX != '' && '1' || '0' }}
+        run: python3 skills/northstar/tests/live_tracker_contract.py

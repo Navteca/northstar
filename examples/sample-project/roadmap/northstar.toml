@@ -1,18 +1,32 @@
 version = 1
 
 [github]
-enabled = false
+enabled = false # the sample never contacts GitHub; set true in a real repository
 repository = "acme/product"
 project_title = "Product roadmap"
 
-[gitlab]
+[companions]
+profile = "Full"
+wayfinder = true
+speckit = true
+graphify = true
+rpi = true
+
+[policy]
+default_route = "Direct"
+archive_after_days = 90
+max_active_items = 150
+
+[notifications]
 enabled = false
-project = "acme/product"
+webhook_url_env = "NORTHSTAR_WEBHOOK_URL"
+format = "generic"
 
 [identities.Maya]
 github = "maya-gh"
-gitlab = "maya-gl"
 
 [identities.Iker]
 github = "iker-gh"
-gitlab = "iker-gl"
+
+[identities.Sofia]
+github = "sofia-gh"

@@ -1,28 +1,22 @@
 ---
 name: setup-northstar
-description: Configures Northstar for one repository by initializing its roadmap and detecting authenticated GitHub, GitLab, Wayfinder, and Graphify capabilities. Use when first enabling Northstar, connecting or changing GitHub/GitLab destinations, or verifying roadmap setup.
-disable-model-invocation: true
+description: Configures Northstar for one repository. Detects an existing roadmap and the authenticated GitHub session, vendors the engine into roadmap/bin, offers optional CI workflows and companions (Wayfinder, Spec Kit, Graphify, cc-rpi). Use when first enabling Northstar, linking a GitHub repository, or checking roadmap integration health.
 ---
 
 # Set up Northstar
 
-Run once per repository and again only to change an integration.
+Run once per repository and again to change an integration.
 
-## Inspect
+## Inspect before changing anything
 
-1. Run `python3 skills/northstar/scripts/northstar.py doctor`.
-2. Locate `ROADMAP.md` and `roadmap/northstar.toml`.
-3. If absent, preview and—with confirmation—run `northstar.py init --apply`.
-4. Check authenticated `gh auth status` and `glab auth status`. Never expose, save, or request tokens.
-5. Detect Wayfinder and Graphify. Explain any missing closeout dependency before proceeding.
+1. Run `scripts/northstar.py doctor` (beside the `northstar` skill) and locate `ROADMAP.md` plus `roadmap/northstar.toml`.
+2. If a roadmap exists, validate and preserve it. If absent, preview `init` and ask before applying.
+3. Run `gh auth status`. Show the account name; never print or store tokens.
+4. Detect Wayfinder, Graphify (`graphify`), Spec Kit (`specify`), and cc-rpi (`.claude/commands/bootstrap` or an `AGENTS.md` mentioning it). Treat each as an explicit choice.
 
-## Select destinations
+## Link GitHub
 
-Show the authenticated accounts and discovered GitHub repositories/Projects and GitLab projects/boards. Ask which exact destinations to synchronize; support either or both. Never select one merely because it is available.
-
-## Configure
-
-Edit `roadmap/northstar.toml`, which stores safe identifiers only:
+Ask which repository (`owner/name`) should hold the issues and, optionally, which GitHub Project title to add them to. Ask before creating or replacing configuration. Store safe identifiers only:
 
 ```toml
 version = 1
@@ -32,17 +26,39 @@ enabled = true
 repository = "acme/product"
 project_title = "Product roadmap"
 
-[gitlab]
-enabled = true
-project = "acme/product"
+[companions]
+profile = "Core"
+wayfinder = false
+speckit = false
+graphify = false
+rpi = false
+
+[policy]
+default_route = "Direct"
 
 [identities.Maya]
 github = "maya-gh"
-gitlab = "maya-gl"
 ```
 
-Add a stable identity mapping for each teammate who may claim work. Ask for confirmation before writing or replacing configuration. Never store credentials.
+Map each teammate's stable roadmap name to their GitHub login. `doctor` lists owners that are missing a mapping; without one, pickup cannot assign the issue and the claim workflow cannot resolve the actor.
+
+## Vendor the engine and offer workflows
+
+Run `scripts/install_operational_assets.py --root <repo>` to preview, then `--apply` after approval. It copies the engine to `roadmap/bin/` and the selected workflow templates to `.github/workflows/`; `--workflow policy --workflow claim` limits the set. Never pass `--force` unless the user approved replacing each reported conflict. It also adds `roadmap/.northstar.lock` to `.gitignore`; everything else under `roadmap/` is versioned.
+
+Recommend `policy` for every team. Offer `claim`, `reconcile`, `maintenance`, and `notify` only when the team asks for them; each is described in the `northstar` skill's OPERATIONS.md. If the default branch is protected, the `claim`, `maintenance`, and `notify` workflows need a `NORTHSTAR_PUSH_TOKEN` secret that may bypass protection for roadmap paths.
+
+Offer the `assets/common/CODEOWNERS.snippet` after asking for the actual maintainer team; never install a placeholder owner.
+
+## Offer companions
+
+Read [PROFILES.md](PROFILES.md). Select the profile during setup, not silently during package installation. Each roadmap item still chooses Direct, Wayfinder, or Spec Kit independently.
+
+- Wayfinder: for large, foggy items. If absent, explain the benefit and offer the Navteca skills distribution; never install without consent.
+- Spec Kit: for features that need a formal specification. If `specify` is absent, offer `uv tool install specify-cli`.
+- Graphify: for durable codebase context at closeout. If absent, offer `uv tool install --upgrade graphifyy`.
+- cc-rpi: an execution method, not a roadmap. Point to the [upstream instructions](https://github.com/juan294/cc-rpi); never clone it silently.
 
 ## Verify
 
-Run `northstar.py validate`, summarize connected and unavailable services, and explain that each item may link to GitHub, GitLab, or both. Re-running setup must show the existing mapping before proposing changes.
+Run `validate` and `doctor`, summarize the linked repository, mapped identities, installed workflows, and selected companions. Re-running setup must show the existing configuration before proposing changes.

@@ -1,69 +1,86 @@
 # Northstar
 
-A Markdown-first product-roadmap skill that keeps GitHub, GitLab, Wayfinder, and Graphify aligned.
+Northstar keeps a product roadmap inside the repository as a small Markdown table, and makes AI assistants and teammates follow the same rules when they pick up, hand off, and close work. GitHub Issues stay the place where execution happens; `ROADMAP.md` stays the place that says what matters, why, who owns it, and whether it is done.
 
-Northstar gives a team one compact, reviewable `ROADMAP.md` while making ownership, handoffs, tracker state, Graphify evidence, and delivery closeout auditable. A roadmap item can be tracked in GitHub, GitLab, or both.
+It is deliberately small. Northstar owns the roadmap row, the item brief, ownership, handoff, and closeout evidence. It does not plan implementations, replace GitHub Issues or Projects, or add a UI.
+
+## Why
+
+Agent-assisted teams lose context at every handoff. Issues, PRs, chat, and specs hold the pieces, but nothing small and reviewable says "this is the next thing, this is who has it, and here is what done means." Northstar is that index, with gates a deterministic engine enforces so an assistant cannot skip them:
+
+- every item has a permanent `RM-###` ID, a user story, and checkbox acceptance criteria;
+- active work has exactly one owner and a target branch;
+- lifecycle moves follow one transition table, in the engine and in CI;
+- closing requires checked criteria, delivery evidence, and durable context for the next person;
+- every ownership change is audited, and the linked GitHub issue is kept in step.
+
+Northstar is a team protocol. It pays off when the whole repository routes roadmap changes through it and work regularly moves between people or agent sessions. For one person, or for portfolio planning with capacity and forecasting needs, use something else.
 
 ## Install
 
 ```sh
-npx skills@latest add Navteca/northstar
+npx skills@latest add Navteca/northstar --skill northstar --skill setup-northstar
 ```
 
-Choose both `northstar` and `setup-northstar`, then select the coding agents where they should be installed. Run `/setup-northstar` once in each product repository.
+Then ask the assistant to set up Northstar in a product repository. It detects or creates `ROADMAP.md`, shows the authenticated `gh` account, asks which repository to link, writes safe configuration to `roadmap/northstar.toml`, and vendors the engine into `roadmap/bin/` so CI can run it. Nothing external is created or installed without approval.
 
-Requirements: Python 3.11 or newer. GitHub synchronization uses an authenticated `gh` session; GitLab synchronization uses an authenticated `glab` session. Northstar never stores credentials.
+Requirements: Python 3.11 or newer and an authenticated `gh` session. Northstar never stores credentials.
 
 ## Talk to Northstar
 
-Users express intent in ordinary language. They are not expected to run Northstar's internal engine.
-
 ```text
-Set up Northstar for this project and show me the GitHub and GitLab accounts you found.
+Set up Northstar here and link it to acme/product on GitHub.
 
-Add a P1 roadmap story for workspace invitations. As a workspace admin, I want to invite teammates and choose their roles, so that I can onboard my team without support.
+Add a P1 story for workspace invitations. As a workspace admin, I want to invite teammates and choose their roles, so that I can onboard my team without support.
 
 Let Maya pick up RM-024 on feat/rm-024-invitations.
 
 Hand RM-024 from Maya to Iker because Maya moved to incident response.
 
-Check whether RM-024 has drifted between the roadmap, GitHub, and GitLab.
-
-RM-024 is finished. The implementation is in PR #142 and Graphify was updated at abc1234.
+RM-024 is finished. Verify its criteria, record PR #160, then update the roadmap and the issue.
 ```
 
-Northstar interprets the request, validates the roadmap, runs a deterministic preview internally, explains the proposed changes, and asks for confirmation when the operation affects ownership, external trackers, imports, or closeout.
+The assistant previews each change in plain language, asks before touching ownership or GitHub, then applies it through the engine.
 
-## What it enforces
+## The contract
 
-- Compact Markdown roadmap with permanent `RM-###` identifiers.
-- Mandatory linked user-story briefs and checkbox acceptance criteria.
-- Separate work status and synchronization health.
-- Exclusive ownership, required target branches, and audited handoffs.
-- GitHub, GitLab, or dual-platform execution records.
-- Explicit import and reconciliation of externally-created work.
-- Wayfinder authorization before implementation.
-- Mandatory Graphify verification and roadmap/tracker updates before `Done`.
-
-## Technically hybrid, experientially a skill
-
-Northstar includes a small deterministic engine so important mutations do not depend on the model rewriting Markdown or remote records from memory. The agent—not the user—operates that engine. Direct engine access exists for development, CI, and troubleshooting.
-
-```text
-User intent → Northstar skill → preview and confirmation → internal engine
-                                                    ↓
-                         ROADMAP.md + GitHub/GitLab + audit journal
-                                                    ↓
-                                  Wayfinder execution → Graphify → closeout
+```md
+| ID | P | Status | Story | Owner | Branch | Issue | Plan | Sync |
+|---|---|---|---|---|---|---|---|---|
+| RM-024 | P1 | In Progress | [Team invitations](roadmap/items/RM-024.md) | Maya | feat/rm-024-invitations | [#142](https://github.com/acme/app/issues/142) | — | Synced |
 ```
 
-Start with the [`ROADMAP.md` sample](examples/sample-project/ROADMAP.md), then follow the user-facing [`complete workflow`](examples/COMPLETE_WORKFLOW.md). Internal engine recipes are documented separately in [`skills/northstar/EXAMPLES.md`](skills/northstar/EXAMPLES.md).
+`Plan` is optional and points to one planning artifact when an item needed discovery or a spec first. `Sync` says whether the linked issue reflects the row. Everything else about the item lives in its brief under `roadmap/items/`. See [REFERENCE.md](skills/northstar/REFERENCE.md) for the lifecycle and file layout, and the [sample project](examples/sample-project/ROADMAP.md) for a valid roadmap.
+
+## Optional operations
+
+Setup can install GitHub workflow templates, each with approval:
+
+- **policy**: validates the contract and lifecycle transitions on roadmap pull requests;
+- **claim**: serialized server-side pickup, claimant resolved from the GitHub actor;
+- **reconcile**: scheduled drift report between the roadmap and linked issues;
+- **maintenance**: archives old completed rows and regenerates views and a read-only dashboard;
+- **notify**: delivers lifecycle events to a webhook.
+
+Details in [OPERATIONS.md](skills/northstar/OPERATIONS.md). GitLab is not supported; the design for adding it later is in [docs/research/DUAL_TRACKER_SUPPORT.md](docs/research/DUAL_TRACKER_SUPPORT.md).
+
+## Companions
+
+Northstar is complete on its own: `Plan kind: Direct` and any URL in `Plan`. Teams that already use these tools can record them per item; setup detects them and offers each one explicitly. See [PROFILES.md](skills/setup-northstar/PROFILES.md).
+
+- [Wayfinder](https://github.com/Navteca/skills/blob/navteca/docs/engineering/wayfinder.md) for a single large or foggy item, from the [Navteca skills distribution](https://github.com/Navteca/skills) (see [FORK_MAINTENANCE.md](docs/FORK_MAINTENANCE.md)).
+- [Spec Kit](https://github.com/github/spec-kit) when a feature needs a formal specification first.
+- [cc-rpi](https://github.com/juan294/cc-rpi) as an execution method, recorded separately from the planning route.
+- [Graphify](https://github.com/Graphify-Labs/graphify) for durable codebase context at closeout.
+
+Design rationale and limitations: [docs/DESIGN_AND_VALUE.md](docs/DESIGN_AND_VALUE.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Development
 
 ```sh
 python3 -m unittest discover -s skills/northstar/tests -v
-python3 skills/northstar/scripts/northstar.py --help
+python3 skills/northstar/scripts/northstar.py --root examples/sample-project validate
+python3 skills/northstar/scripts/northstar_admin.py --root examples/sample-project policy
 ```
 
-The engine uses only the Python standard library. Remote adapter tests do not make network calls; live synchronization always uses the user-selected authenticated CLI sessions.
+Standard library only. Tests never contact GitHub.

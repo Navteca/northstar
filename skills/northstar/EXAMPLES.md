@@ -1,71 +1,44 @@
-# Northstar internal engine recipes
+# Northstar engine recipes
 
-This file is for the agent, CI, and troubleshooting. Users normally express intent in natural language; do not ask them to construct these commands.
-
-For every mutation:
-
-1. Translate the user's intent into an engine operation.
-2. Run it without `--apply`.
-3. Translate the preview into plain language.
-4. Ask for confirmation when required by `SKILL.md`.
-5. Repeat with `--apply` internally.
-
-Engine prefix:
-
-```sh
-python3 skills/northstar/scripts/northstar.py
-```
-
-## Intent mapping
+For the agent, CI, and troubleshooting. Run without `--apply` to preview, confirm when `SKILL.md` requires it, then apply. In a set-up repository use `roadmap/bin/northstar.py`.
 
 | User wording | Operation |
 |---|---|
-| “Create/add this story” | `add` |
-| “Change priority/status/title” | `update` |
-| “Pick this up/start this” | `claim` |
-| “Give/transfer this to…” | `handoff` |
-| “Check/fix tracker differences” | `reconcile` |
-| “Finish/close/deliver this” | `close` |
-
-## Add a ready story
+| "Create/add this story" | `add` |
+| "Import issue #151" | `add --origin github --origin-url <issue URL>` |
+| "Change priority/status/title", "this is blocked" | `update` |
+| "Pick this up/start this" | `pickup` |
+| "Use Wayfinder/Spec Kit for this" | `pickup --planning --plan-kind … --plan …` or `link-plan` |
+| "Give/transfer this to…" | `handoff` |
+| "Check/fix issue drift" | `reconcile` |
+| "Finish/close/deliver this" | `close` |
 
 ```sh
-python3 skills/northstar/scripts/northstar.py add \
-  --title "Team invitations" \
-  --priority P1 \
-  --status Ready \
+N=roadmap/bin/northstar.py
+
+python3 $N add --title "Team invitations" --priority P1 --status Ready \
   --story "As a workspace admin, I want to invite teammates, so that I can onboard them without support." \
   --acceptance "Admin can invite an email address" \
-  --acceptance "An invitation can be accepted once"
+  --acceptance "An invitation can be accepted once" --apply
+
+python3 $N pickup RM-024 --owner Maya --branch feat/rm-024-invitations --apply
+
+python3 $N pickup RM-025 --owner Maya --branch feat/rm-025-workspace-roles \
+  --planning --plan-kind Wayfinder --plan https://github.com/acme/product/issues/155 --apply
+
+python3 $N link-plan RM-025 --actor Maya --status Ready --plan-kind Wayfinder \
+  --plan https://github.com/acme/product/issues/155 --reason "Map cleared and context captured" --apply
+
+python3 $N pickup RM-026 --owner Iker --branch feat/rm-026-billing \
+  --planning --plan-kind "Spec Kit" --execution-method RPI --plan docs/specs/rm-026-billing.md --apply
+
+python3 $N update RM-024 --actor Maya --status Blocked --reason "Waiting on vendor API keys" --apply
+
+python3 $N handoff RM-024 --actor Maya --to Iker --reason "Pairing ownership transferred" --apply
+
+python3 $N close RM-024 --actor Iker \
+  --context "Graphify: updated graphify-out at abc123; docs/decisions/invitations.md" \
+  --evidence "GitHub PR #142" --apply
 ```
 
-## Import external work
-
-```sh
-python3 skills/northstar/scripts/northstar.py add \
-  --title "Usage dashboard" \
-  --priority P2 \
-  --story "As an account owner, I want to review usage, so that I can manage adoption." \
-  --acceptance "Weekly active usage is visible" \
-  --origin github \
-  --origin-url https://github.com/acme/product/issues/42
-```
-
-## Claim, hand off, reconcile, and close
-
-```sh
-python3 skills/northstar/scripts/northstar.py claim RM-024 \
-  --owner Maya --actor Maya \
-  --branch feat/rm-024-invitations \
-  --wayfinder roadmap/maps/RM-024.md
-
-python3 skills/northstar/scripts/northstar.py handoff RM-024 \
-  --actor Maya --to Iker --reason "Pairing ownership transferred"
-
-python3 skills/northstar/scripts/northstar.py reconcile RM-024
-
-python3 skills/northstar/scripts/northstar.py close RM-024 \
-  --actor Iker \
-  --graphify "Updated: graphify-out at abc123" \
-  --evidence "GitHub PR #142 and GitLab MR !87"
-```
+Without Graphify, `--context "Repository: docs/decisions/invitations.md; GitHub PR #142"` is valid.
