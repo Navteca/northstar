@@ -27,7 +27,7 @@ Codex:
 npx skills@latest add Navteca/northstar --skill northstar --skill setup-northstar -a codex -y
 ```
 
-Both at once: repeat `-a` (`-a claude-code -a codex`). Skills land in `.claude/skills/` for Claude Code and `.agents/skills/` for Codex. Commit these directories so teammates and CI agents get the same instructions. Add `-g` instead to install for your user only.
+Both at once: repeat `-a` (`-a claude-code -a codex`). The canonical copy lands in `.agents/skills/` (read by Codex); Claude Code gets symlinks in `.claude/skills/` pointing there. Commit both directories so teammates get the same instructions. Add `-g` instead to install for your user only.
 
 Check:
 

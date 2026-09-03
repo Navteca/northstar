@@ -28,7 +28,7 @@ Codex:
 npx skills@latest add Navteca/northstar --skill northstar --skill setup-northstar -a codex -y
 ```
 
-Use both `-a` flags if the team mixes agents. Commit the resulting `.claude/skills/` or `.agents/skills/` directory.
+Use both `-a` flags if the team mixes agents. The canonical copy is `.agents/skills/`; Claude Code reads it through symlinks in `.claude/skills/`. Commit both directories.
 
 ## 3. Run setup on a branch
 
